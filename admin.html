@@ -1,0 +1,36 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>لوحة التحكم - سحر العيون</title>
+<style>
+body{margin:0;background:#0b0907;color:#f3e9d2;font-family:system-ui,Tahoma,sans-serif;padding:16px}
+h1,h2{color:#c9a24b}input,select,button{background:#1a1510;color:#f3e9d2;border:1px solid #5a4a22;border-radius:6px;padding:8px;font:inherit}
+button{cursor:pointer;background:#c9a24b;color:#111;border:0}.card{border:1px solid #5a4a22;border-radius:10px;padding:12px;margin:10px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid #5a4a22;padding:6px;text-align:right;vertical-align:top}
+.tabs button{margin:2px}.muted{opacity:.7}.new{background:#2a2108}
+</style></head><body>
+<div id="app"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ST={new:'جديد',confirmed:'مؤكد',shipped:'اتشحن',delivered:'اتسلم',canceled:'ملغي'};
+async function api(u,b){const r=await fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});const d=await r.json().catch(()=>({}));if(r.status===401&&u!=='/api/admin/login'){login();throw 0}return {ok:r.ok,d}}
+function login(msg){$('#app').innerHTML='<h1>لوحة التحكم</h1><div class="card"><input id="pw" type="password" placeholder="كلمة السر"> <button onclick="doLogin()">دخول</button><p>'+(msg||'')+'</p></div>';$('#pw').onkeydown=e=>{if(e.key==='Enter')doLogin()}}
+async function doLogin(){const {ok,d}=await api('/api/admin/login',{password:$('#pw').value});ok?home():login(esc(d.error||'خطأ'))}
+let tab='orders';
+async function home(){
+  $('#app').innerHTML='<h1>سحر العيون - لوحة التحكم</h1><div class="tabs"><button onclick="tab=\'orders\';home()">الطلبات</button><button onclick="tab=\'products\';home()">المنتجات</button></div><div id="c"></div>';
+  tab==='orders'?orders():products();
+}
+async function orders(){
+  const {d}=await api('/api/admin/orders');
+  const rev=d.filter(o=>o.status!=='canceled').reduce((s,o)=>s+o.total,0);
+  $('#c').innerHTML='<h2>الطلبات ('+d.length+')</h2><p class="muted">إجمالي المبيعات غير الملغية: '+rev.toLocaleString('ar-EG')+' ج.م</p><div style="overflow:auto"><table><tr><th>رقم</th><th>الوقت</th><th>العميل</th><th>العنوان</th><th>الطلب</th><th>الإجمالي</th><th>الحالة</th></tr>'+
+  d.map(o=>'<tr class="'+(o.status==='new'?'new':'')+'"><td>'+esc(o.num)+'</td><td>'+esc(new Date(o.at).toLocaleString('ar-EG'))+'</td><td>'+esc(o.name)+'<br><a style="color:#c9a24b" href="tel:'+esc(o.phone)+'">'+esc(o.phone)+'</a></td><td>'+esc(o.gov)+' - '+esc(o.addr)+(o.notes?'<br><i>'+esc(o.notes)+'</i>':'')+'<br>'+esc(o.pay)+'</td><td>'+o.items.map(i=>esc(i.name)+' x'+i.qty).join('<br>')+'</td><td>'+esc(o.total)+'</td><td><select onchange="setSt(\''+esc(o.num)+'\',this.value)">'+Object.entries(ST).map(([k,v])=>'<option value="'+k+'"'+(o.status===k?' selected':'')+'>'+v+'</option>').join('')+'</select></td></tr>').join('')+'</table></div>';
+}
+async function setSt(num,status){await api('/api/admin/status',{num,status});orders()}
+async function products(){
+  const d=await (await fetch('/api/products')).json();
+  $('#c').innerHTML='<h2>المنتجات</h2>'+d.map(p=>'<div class="card"><b>'+esc(p.name)+'</b><br>السعر: <input id="pr'+p.id+'" type="number" value="'+p.price+'" style="width:100px"> قبل الخصم: <input id="od'+p.id+'" type="number" value="'+(p.old||'')+'" style="width:100px"> <label><input id="st'+p.id+'" type="checkbox" '+(p.stock!==false?'checked':'')+'> متوفر</label> <button onclick="saveP('+p.id+')">حفظ</button></div>').join('');
+}
+async function saveP(id){const {ok,d}=await api('/api/admin/products',{id,price:$('#pr'+id).value,old:$('#od'+id).value,stock:$('#st'+id).checked});alert(ok?'تم الحفظ':(d.error||'خطأ'))}
+api('/api/admin/orders').then(home).catch(()=>login());
+</script></body></html>
