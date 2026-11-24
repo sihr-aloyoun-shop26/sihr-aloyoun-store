@@ -17,7 +17,7 @@ function login(msg){$('#app').innerHTML='<h1>لوحة التحكم</h1><div clas
 async function doLogin(){const {ok,d}=await api('/api/admin/login',{password:$('#pw').value});ok?home():login(esc(d.error||'خطأ'))}
 let tab='orders';
 async function home(){
-  $('#app').innerHTML='<h1>سحر العيون - لوحة التحكم</h1><div class="tabs"><button onclick="tab=\'orders\';home()">الطلبات</button><button onclick="tab=\'products\';home()">المنتجات</button></div><div id="c"></div>';
+  $('#app').innerHTML='<h1>سحر العيون - لوحة التحكم</h1><div class="tabs"><button onclick="tab=\'orders\';home()">الطلبات</button><button onclick="tab=\'products\';home()">المنتجات</button><button onclick="testN()">إشعار تجريبي</button></div><div id="c"></div>';
   tab==='orders'?orders():products();
 }
 async function orders(){
@@ -26,6 +26,7 @@ async function orders(){
   $('#c').innerHTML='<h2>الطلبات ('+d.length+')</h2><p class="muted">إجمالي المبيعات غير الملغية: '+rev.toLocaleString('ar-EG')+' ج.م</p><div style="overflow:auto"><table><tr><th>رقم</th><th>الوقت</th><th>العميل</th><th>العنوان</th><th>الطلب</th><th>الإجمالي</th><th>الحالة</th></tr>'+
   d.map(o=>'<tr class="'+(o.status==='new'?'new':'')+'"><td>'+esc(o.num)+'</td><td>'+esc(new Date(o.at).toLocaleString('ar-EG'))+'</td><td>'+esc(o.name)+'<br><a style="color:#c9a24b" href="tel:'+esc(o.phone)+'">'+esc(o.phone)+'</a></td><td>'+esc(o.gov)+' - '+esc(o.addr)+(o.notes?'<br><i>'+esc(o.notes)+'</i>':'')+'<br>'+esc(o.pay)+'</td><td>'+o.items.map(i=>esc(i.name)+' x'+i.qty).join('<br>')+'</td><td>'+esc(o.total)+'</td><td><select onchange="setSt(\''+esc(o.num)+'\',this.value)">'+Object.entries(ST).map(([k,v])=>'<option value="'+k+'"'+(o.status===k?' selected':'')+'>'+v+'</option>').join('')+'</select></td></tr>').join('')+'</table></div>';
 }
+async function testN(){const {d}=await api('/api/admin/test-notify',{});alert('نتيجة: '+d.result)}
 async function setSt(num,status){await api('/api/admin/status',{num,status});orders()}
 async function products(){
   const d=await (await fetch('/api/products')).json();
