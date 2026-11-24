@@ -52,7 +52,7 @@ function send(res, code, obj, headers = {}) {
 }
 
 async function notify(o, items) {
-  if (!TG_TOKEN || !TG_CHAT) return;
+  if (!TG_TOKEN || !TG_CHAT) return 'not-configured';
   const text = '🛍 طلب جديد - سحر العيون\nرقم: ' + o.num + '\nالاسم: ' + o.name + '\nالموبايل: ' + o.phone +
     '\nالمحافظة: ' + o.gov + '\nالعنوان: ' + o.addr + '\nالدفع: ' + o.pay + '\n' +
     items.map(i => '- ' + i.name + ' x' + i.qty).join('\n') + '\nالإجمالي: ' + o.total + ' ج.م' + (o.notes ? '\nملاحظات: ' + o.notes : '');
@@ -62,7 +62,8 @@ async function notify(o, items) {
       body: JSON.stringify({ chat_id: TG_CHAT, text })
     });
     if (!r.ok) console.error('Telegram error', r.status);
-  } catch (e) { console.error('Telegram failed', e.message); }
+    return r.ok ? 'sent' : 'telegram-error-' + r.status;
+  } catch (e) { console.error('Telegram failed', e.message); return 'failed'; }
 }
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
@@ -107,6 +108,11 @@ http.createServer(async (req, res) => {
 
     if (p.startsWith('/api/admin/')) {
       if (!isAdmin(req)) return send(res, 401, { error: 'غير مصرح' });
+      if (p === '/api/admin/test-notify' && req.method === 'POST') {
+        const items = [{ name: 'إشعار تجريبي', qty: 1 }];
+        const st = await notify({ num: 'TEST', name: 'تجربة', phone: '-', gov: '-', addr: '-', pay: '-', total: 0, notes: 'ده اختبار، مش طلب حقيقي' }, items);
+        return send(res, 200, { result: st });
+      }
       if (p === '/api/admin/orders' && req.method === 'GET') return send(res, 200, readJSON(ORDERS_FILE).reverse());
       if (p === '/api/admin/status' && req.method === 'POST') {
         const b = await body(req), orders = readJSON(ORDERS_FILE), o = orders.find(x => x.num === b.num);
