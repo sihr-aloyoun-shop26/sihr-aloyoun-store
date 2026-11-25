@@ -136,6 +136,9 @@ function sanitizeSettings(b) {
   for (const k of ['colorGold', 'colorGoldLight', 'colorBg', 'colorCard', 'colorText']) if (b[k] !== undefined) { if (!/^#[0-9a-fA-F]{6}$/.test(b[k])) throw new Error('لون غير صالح'); s[k] = b[k]; }
   for (const k of ['contactPhone', 'whatsapp', 'contactEmail', 'contactAddress', 'instagram', 'facebook', 'tiktok', 'closedMessage', 'transferInfo', 'announcement']) if (b[k] !== undefined) s[k] = clean(b[k], 200);
   for (const k of ['shippingFee', 'freeShipFrom']) if (b[k] !== undefined) { const n = Number(b[k]); if (!(n >= 0 && n < 1e6)) throw new Error('رقم غير صالح'); s[k] = n; }
+  if (b.bgStyle !== undefined) s.bgStyle = ['both', 'particles', 'mist', 'none'].includes(b.bgStyle) ? b.bgStyle : 'both';
+  if (b.bgDim !== undefined) s.bgDim = Math.min(95, Math.max(0, Number(b.bgDim) || 0));
+  if (b.bgImage !== undefined) { if (!(b.bgImage === '' || (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+$/.test(b.bgImage) && b.bgImage.length < 1400000))) throw new Error('صورة الخلفية غير صالحة أو كبيرة'); s.bgImage = b.bgImage; }
   for (const k of ['storeOpen', 'payCash', 'payTransfer']) if (b[k] !== undefined) s[k] = !!b[k];
   if (Array.isArray(b.codes)) s.codes = b.codes.slice(0, 50).map(c => ({ code: clean(c.code, 30).toUpperCase().replace(/\s/g, ''), type: c.type === 'fixed' ? 'fixed' : 'percent', value: Math.max(0, Number(c.value) || 0), active: c.active !== false })).filter(c => c.code && c.value > 0);
   if (Array.isArray(b.sectionOrder)) { const ok = ['collection', 'about', 'reviews']; s.sectionOrder = b.sectionOrder.filter(x => ok.includes(x)); for (const x of ok) if (!s.sectionOrder.includes(x)) s.sectionOrder.push(x); }
