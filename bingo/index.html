@@ -30,10 +30,10 @@ footer{text-align:center;color:#888;padding:24px;font-size:13px}
 <div id="cart"><button class="g" onclick="toggleCart()">إغلاق</button><h3>سلتك</h3><div id="items"></div><h3>الإجمالي: <span id="tot">0</span> ج.م</h3>
 <input id="nm" placeholder="الاسم"><input id="ph" placeholder="رقم الموبايل"><input id="ad" placeholder="العنوان">
 <button style="width:100%;margin-top:8px" onclick="order()">إتمام الطلب</button><div id="om" style="font-size:12px;color:#aaa;margin-top:6px">ده موقع تجريبي: الطلب بيتجهز كرسالة تنسخها وتبعتها.</div></div>
-<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button id="aib" onclick="aiStart()" style="background:#7c4dff;color:#fff">✨ AI حي</button><button class="g" onclick="t3(this)">3D: مقفول</button><button onclick="snap()">📸 صورة</button><button class="g" onclick="document.getElementById('uf').click()">⬆ صورة هدومك</button><select id="ut" class="g" style="border-radius:10px;padding:8px"><option value="hood">هودي</option><option value="jacket">جاكت</option><option value="tee">تيشيرت</option></select><input type="file" id="uf" accept="image/*" hidden><span id="tn"></span></div>
-<div class="stage"><video id="v" playsinline muted></video><video id="av" playsinline autoplay muted style="display:none;transform:scaleX(-1)"></video><div id="aic" style="position:absolute;top:8px;left:8px;background:#000a;padding:4px 10px;border-radius:8px;display:none"></div><canvas id="c"></canvas></div><div id="msg"></div>
+<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button id="aib" onclick="aiStart()" style="display:none">AI</button><button id="phb" onclick="photoTry()" style="background:#7c4dff;color:#fff">📸 صورة واقعية AI</button><button class="g" onclick="t3(this)">3D: مقفول</button><button onclick="snap()">📸 صورة</button><button class="g" onclick="document.getElementById('uf').click()">⬆ صورة هدومك</button><select id="ut" class="g" style="border-radius:10px;padding:8px"><option value="hood">هودي</option><option value="jacket">جاكت</option><option value="tee">تيشيرت</option></select><input type="file" id="uf" accept="image/*" hidden><span id="tn"></span></div>
+<div class="stage"><video id="v" playsinline muted></video><video id="av" playsinline autoplay muted style="display:none;transform:scaleX(-1)"></video><div id="res" style="position:absolute;inset:0;display:none;background:#000;z-index:3;align-items:center;justify-content:center;flex-direction:column;gap:8px"><img id="resi" style="max-width:100%;max-height:88%;display:none"><div id="resm" style="padding:10px;text-align:center"></div><div class="row"><a id="resd" download="bingo-tryon.jpg" style="display:none"><button>حفظ الصورة</button></a><button class="g" onclick="res.style.display='none'">رجوع</button></div></div><div id="aic" style="position:absolute;top:8px;left:8px;background:#000a;padding:4px 10px;border-radius:8px;display:none"></div><canvas id="c"></canvas></div><div id="msg"></div>
 <div class="row" id="tcol"></div></div>
-<footer>بينجو © موقع تجريبي<br>التجربة العادية بتشتغل على موبايلك ومفيش فيديو بيتبعت. وضع "AI حي" بيبعت فيديو الكاميرا لخدمة Decart لمدة 30 ثانية.</footer>
+<footer>بينجو © موقع تجريبي<br>زرار "صورة واقعية AI" بيبعت صورة واحدة منك لخدمة Magic Hour عشان تتولد الصورة.<br>التجربة العادية بتشتغل على موبايلك ومفيش فيديو بيتبعت. وضع "AI حي" بيبعت فيديو الكاميرا لخدمة Decart لمدة 30 ثانية.</footer>
 <script type="module">
 import {FilesetResolver,PoseLandmarker} from './lib/vision_bundle.mjs';
 import {prepare,drawGarment,resetSmooth} from './lib/engine.js';
@@ -113,5 +113,26 @@ window.aiStart=async()=>{
   msg.textContent='خصوصية: الفيديو بيتبعت لخدمة Decart في الوضع ده.';let left=30;aic.style.display='block';aic.textContent='⏱ '+left;
   aiTimer=setInterval(()=>{left--;aic.textContent='⏱ '+left;if(left<=0){aiStop();msg.textContent='خلصت الـ30 ثانية. اضغط ✨ AI حي لتجربة تانية.';v.style.display='';c.style.display=''}},1000);
  }catch(e){msg.textContent='مشكلة في AI الحي: '+(e.message||e);aiStop();v.style.display='';c.style.display=''}
+};
+
+// ---- photo try-on via Magic Hour (server proxy). One camera photo + the product -> realistic photo.
+function shrink(srcEl,max,type,q,bg){const w=srcEl.videoWidth||srcEl.naturalWidth,hh=srcEl.videoHeight||srcEl.naturalHeight,k=Math.min(1,max/Math.max(w,hh));const cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(hh*k);const x=cv.getContext('2d');if(bg){x.fillStyle=bg;x.fillRect(0,0,cv.width,cv.height)}x.drawImage(srcEl,0,0,cv.width,cv.height);return cv.toDataURL(type,q)}
+window.photoTry=async()=>{
+ const show=(t,im)=>{res.style.display='flex';resm.textContent=t;resi.style.display=im?'block':'none';if(im){resi.src=im;resd.href=im;resd.style.display='inline'}else resd.style.display='none'};
+ try{const s=await fetch('/api/tryon-photo-status').then(r=>r.json());if(!s.enabled){msg.textContent='ميزة الصورة الواقعية لسه مش متفعلة (محتاجة مفتاح الخدمة).';return}}catch(e){msg.textContent='ميزة الصورة الواقعية لسه مش متفعلة.';return}
+ if(!v.videoWidth||!run){msg.textContent='افتح الكاميرا الأول ووقف بحيث جسمك من الراس للوسط ظاهر.';return}
+ if(!sessionStorage.getItem('phok')){if(!confirm('صورتك هتتبعت لخدمة Magic Hour عشان تتولد صورة واقعية بالهدمة. بتاخد حوالي دقيقة. موافق؟'))return;sessionStorage.setItem('phok','1')}
+ const person=shrink(v,1024,'image/jpeg',0.88);
+ const gi=new Image();await new Promise((r,j)=>{gi.onload=r;gi.onerror=j;gi.src=cur.up||src(cur)});
+ const garment=shrink(gi,768,'image/jpeg',0.92,'#ffffff');
+ show('جاري التجهيز... ممكن ياخد لحد دقيقتين');
+ try{
+  const r=await fetch('/api/tryon-photo',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({person,garment})});
+  const j=await r.json();if(!r.ok)throw new Error(j.error||('خطأ '+r.status));
+  for(let i=0;i<50;i++){await new Promise(r=>setTimeout(r,3000));const p=await fetch('/api/tryon-photo/'+encodeURIComponent(j.id)).then(r=>r.json());
+   if(p.status==='complete'&&p.url){show('',p.url);return}
+   if(p.status==='error'||p.status==='canceled')throw new Error(p.message||'فشل التوليد، جرب صورة تانية (الوش والجسم ظاهرين)');}
+  throw new Error('اتأخر زيادة، جرب تاني بعد شوية');
+ }catch(e){show('مشكلة: '+(e.message||e))}
 };
 </script></body></html>
