@@ -30,12 +30,15 @@ footer{text-align:center;color:#888;padding:24px;font-size:13px}
 <div id="cart"><button class="g" onclick="toggleCart()">إغلاق</button><h3>سلتك</h3><div id="items"></div><h3>الإجمالي: <span id="tot">0</span> ج.م</h3>
 <input id="nm" placeholder="الاسم"><input id="ph" placeholder="رقم الموبايل"><input id="ad" placeholder="العنوان">
 <button style="width:100%;margin-top:8px" onclick="order()">إتمام الطلب</button><div id="om" style="font-size:12px;color:#aaa;margin-top:6px">ده موقع تجريبي: الطلب بيتجهز كرسالة تنسخها وتبعتها.</div></div>
-<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button onclick="snap()">📸 صورة</button><span id="tn"></span></div>
+<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button class="g" onclick="t3(this)">3D: شغال</button><button onclick="snap()">📸 صورة</button><button class="g" onclick="document.getElementById('uf').click()">⬆ صورة هدومك</button><select id="ut" class="g" style="border-radius:10px;padding:8px"><option value="hood">هودي</option><option value="jacket">جاكت</option><option value="tee">تيشيرت</option></select><input type="file" id="uf" accept="image/*" hidden><span id="tn"></span></div>
 <div class="stage"><video id="v" playsinline muted></video><canvas id="c"></canvas></div><div id="msg"></div>
 <div class="row" id="tcol"></div></div>
 <footer>بينجو © موقع تجريبي</footer>
 <script type="module">
 import {FilesetResolver,PoseLandmarker} from './lib/vision_bundle.mjs';
+import {prepare,drawGarment,resetSmooth} from './lib/engine.js';
+import {Garment3D} from './lib/engine3d.js';
+let g3=null,use3=true;window.t3=b=>{use3=!use3;b.textContent=use3?'3D: شغال':'3D: مقفول'};
 const COLORS={أسود:'#16161a',أبيض:'#f1f1f1',رمادي:'#7b7f86',كحلي:'#1c2c52',أحمر:'#b3202a',بيج:'#c9b08a'};
 const P=[
 {id:'tee1',t:'tee',n:'تيشيرت كلاسيك',p:350,c:'أبيض'},{id:'tee2',t:'tee',n:'تيشيرت أوفرسايز',p:420,c:'أسود'},
@@ -74,23 +77,15 @@ lm=await PoseLandmarker.createFromOptions(f,{baseOptions:{modelAssetPath:'./lib/
 window.openTry=async i=>{cur=P.find(x=>x.id==i);tm.classList.add('show');tn.textContent=cur.n;
 tcol.innerHTML=photo[i]?'':Object.keys(COLORS).map(k=>`<button class="dot" style="background:${COLORS[k]}" onclick="tc('${k}')"></button>`).join('');loadImg();
 try{await initModel();msg.textContent='جاري فتح الكاميرا...';stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:720,height:960},audio:false});
-v.srcObject=stream;await v.play();c.width=v.videoWidth;c.height=v.videoHeight;msg.textContent='وقف بعيد حوالي متر، الكتافين ظاهرين';run=true;loop()}catch(e){msg.textContent='مش قادر يفتح الكاميرا: '+e.message}}
+v.srcObject=stream;await v.play();c.width=v.videoWidth;c.height=v.videoHeight;try{g3=new Garment3D(c.width,c.height);if(gar)g3.set(gar)}catch(e){g3=null}msg.textContent='وقف بعيد حوالي متر، الكتافين ظاهرين';run=true;loop()}catch(e){msg.textContent='مش قادر يفتح الكاميرا: '+e.message}}
+document.getElementById('uf').onchange=e=>{const f=e.target.files[0];if(!f)return;cur={id:'up',t:ut.value,n:'صورتك',up:URL.createObjectURL(f)};tn.textContent=cur.n;loadImg()};
 window.tc=k=>{st[cur.id].c=k;loadImg();render()};
-function loadImg(){img=new Image();img.src=src(cur)}
+let gar=null;function loadImg(){const i=new Image();i.onload=()=>{gar=prepare(i);if(g3)g3.set(gar)};i.src=cur.up||src(cur)}
 window.closeTry=()=>{run=false;tm.classList.remove('show');stream&&stream.getTracks().forEach(t=>t.stop())}
 window.snap=()=>{const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const x=o.getContext('2d');x.save();x.translate(o.width,0);x.scale(-1,1);x.drawImage(v,0,0,o.width,o.height);x.restore();x.drawImage(c,0,0);const a=document.createElement('a');a.href=o.toDataURL('image/png');a.download='bingo-tryon.png';a.click()};
-function sm(pts){if(!lastPts)return lastPts=pts;return lastPts=pts.map((p,i)=>({x:lastPts[i].x*.6+p.x*.4,y:lastPts[i].y*.6+p.y*.4}))}
-let lt=-1;function loop(){if(!run)return;requestAnimationFrame(loop);if(v.currentTime===lt)return;lt=v.currentTime;
+let lt=-1;function loop(){if(!run)return;requestAnimationFrame(loop);if(v.currentTime===lt||!gar)return;lt=v.currentTime;
 const r=lm.detectForVideo(v,performance.now());const W=c.width,H=c.height;ctx.clearRect(0,0,W,H);
-// canvas is mirrored via CSS, draw in video coordinates
 c.style.transform=v.style.transform='scaleX(-1)';
-if(!r.landmarks.length){msg.textContent='مش شايف جسمك، ابعد شوية';return}msg.textContent='';
-const L=r.landmarks[0];const q=sm([L[11],L[12],L[23],L[24],L[13],L[14]].map(p=>({x:p.x*W,y:p.y*H})));
-const[ls,rs,lh,rh]=q;const sw=Math.hypot(ls.x-rs.x,ls.y-rs.y);const cx=(ls.x+rs.x)/2,cy=(ls.y+rs.y)/2;
-const hx=(lh.x+rh.x)/2,hy=(lh.y+rh.y)/2;const ang=Math.atan2(rs.y-ls.y,rs.x-ls.x)+Math.PI;
-// garment image shoulders span ~ 62..238 of 300 wide => 176/300; neck top y~30/260
-const t=cur.t,k=t=='tee'?1.55:1.62;const gw=sw*k*1.0;const aspect=img.naturalHeight/img.naturalWidth;const gh=gw*aspect;
-const tl=Math.hypot(hx-cx,hy-cy);const hgt=t=='tee'?Math.max(gh,tl*1.15):Math.max(gh,tl*1.3);
-ctx.save();ctx.translate(cx,cy);ctx.rotate(Math.atan2(ls.y-rs.y,ls.x-rs.x));
-ctx.drawImage(img,-gw/2,-hgt*0.115,gw,hgt);ctx.restore()}
+if(!r.landmarks.length){msg.textContent='مش شايف جسمك، ابعد شوية';resetSmooth();return}
+if(drawGarment(ctx,v,r.landmarks[0],W,H,gar,cur.t,use3?g3:null))msg.textContent='';else msg.textContent='ابعد شوية والكتافين يبانوا'}
 </script></body></html>
