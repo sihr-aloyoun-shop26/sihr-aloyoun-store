@@ -59,5 +59,26 @@
  "colorCard": "#171310",
  "colorText": "#f5efe4",
  "showAbout": true,
- "showReviews": true
+ "showReviews": true,
+ "contactPhone": "",
+ "whatsapp": "",
+ "contactEmail": "",
+ "contactAddress": "",
+ "instagram": "",
+ "facebook": "",
+ "tiktok": "",
+ "shippingFee": 0,
+ "freeShipFrom": 0,
+ "storeOpen": true,
+ "closedMessage": "المتجر مغلق مؤقتاً، هنرجع قريب ✨",
+ "payCash": true,
+ "payTransfer": false,
+ "transferInfo": "",
+ "codes": [],
+ "sectionOrder": [
+  "collection",
+  "about",
+  "reviews"
+ ],
+ "announcement": ""
 }
