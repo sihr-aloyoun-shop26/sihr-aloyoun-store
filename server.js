@@ -160,12 +160,21 @@ const TRYON_ASSETS = {
   'wasm/vision_wasm_internal.wasm': [MP + 'wasm/vision_wasm_internal.wasm', '225bc06c0f51a9cf31fea0e9e0b0243e9e01fb5ef332cc1a7fa6656dbdfdaabf'],
   'lib/pose.task': ['https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task', '59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a']
 };
+const MP14 = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/';
+const BINGO_ASSETS = {
+  'lib/vision_bundle.mjs': [MP14 + 'vision_bundle.mjs', 'e77f281f9619150d937023c355bae170e9120e3b9e43f1e23a2a7bee07197669'],
+  'wasm/vision_wasm_internal.js': [MP14 + 'wasm/vision_wasm_internal.js', '9440cf0cc0cea21800e31581ec32aeedcc5fbf9df4509796bbc7d3f99e52ab9c'],
+  'wasm/vision_wasm_internal.wasm': [MP14 + 'wasm/vision_wasm_internal.wasm', 'f82a8e6c05e08a44cc9f9e7ec5f845935bcbb1b1500ebe8c2f4812fb4e2917dc'],
+  'lib/pose.task': TRYON_ASSETS['lib/pose.task']
+};
+const APPS = { tryon: TRYON_ASSETS, bingo: BINGO_ASSETS };
 const tryonMem = {}, tryonBusy = {};
-function tryonAsset(rel) {
-  if (tryonMem[rel]) return Promise.resolve(tryonMem[rel]);
-  if (tryonBusy[rel]) return tryonBusy[rel];
-  const [url, hash] = TRYON_ASSETS[rel], cf = path.join(DATA_DIR, 'tryon-' + hash.slice(0, 16));
-  return (tryonBusy[rel] = (async () => {
+function tryonAsset(app, rel) {
+  const k = app + '/' + rel;
+  if (tryonMem[k]) return Promise.resolve(tryonMem[k]);
+  if (tryonBusy[k]) return tryonBusy[k];
+  const [url, hash] = APPS[app][rel], cf = path.join(DATA_DIR, 'tryon-' + hash.slice(0, 16));
+  return (tryonBusy[k] = (async () => {
     try {
       let b = null;
       try { b = fs.readFileSync(cf); } catch (e) {}
@@ -175,8 +184,8 @@ function tryonAsset(rel) {
         if (crypto.createHash('sha256').update(b).digest('hex') !== hash) throw new Error('hash mismatch ' + rel);
         try { fs.writeFileSync(cf, b); } catch (e) {}
       }
-      tryonMem[rel] = b; return b;
-    } finally { delete tryonBusy[rel]; }
+      tryonMem[k] = b; return b;
+    } finally { delete tryonBusy[k]; }
   })());
 }
 const CASH = 'الدفع عند الاستلام';
@@ -291,13 +300,14 @@ http.createServer(async (req, res) => {
       return send(res, 404, { error: 'not found' });
     }
 
-    if (p === '/tryon') { res.writeHead(301, { Location: '/tryon/' }); return res.end(); }
-    if (p.startsWith('/tryon/')) {
-      const rel = decodeURIComponent(p.slice(7)) || 'index.html';
+    if (p === '/tryon' || p === '/bingo') { res.writeHead(301, { Location: p + '/' }); return res.end(); }
+    const appM = /^\/(tryon|bingo)\/(.*)$/.exec(p);
+    if (appM) {
+      const app = appM[1], rel = decodeURIComponent(appM[2]) || 'index.html';
       const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
       let buf = null;
-      if (TRYON_ASSETS[rel]) buf = await tryonAsset(rel);
-      else if (rel === 'index.html') buf = fs.readFileSync(path.join(__dirname, 'tryon', 'index.html'));
+      if (APPS[app][rel]) buf = await tryonAsset(app, rel);
+      else if (rel === 'index.html') buf = fs.readFileSync(path.join(__dirname, app, 'index.html'));
       if (!buf) { res.writeHead(404); return res.end('Not found'); }
       const ext = path.extname(rel).toLowerCase();
       res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Content-Length': buf.length, 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400' });
