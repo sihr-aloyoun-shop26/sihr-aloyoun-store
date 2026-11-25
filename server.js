@@ -71,7 +71,7 @@ function limited(ip, max) {
 }
 const clean = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
 const cleanLong = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, n);
-const okImg = s => s === '' || (typeof s === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+$/.test(s) && s.length < 700000);
+const okImg = s => s === '' || (typeof s === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+$/.test(s) && s.length < 900000);
 
 function sign(v) { return crypto.createHmac('sha256', SECRET).update(v).digest('hex'); }
 function makeToken() { const e = String(Date.now() + 7 * 864e5); return e + '.' + sign(e); }
@@ -88,8 +88,8 @@ function isAdmin(req) {
 }
 function body(req, max) {
   return new Promise((res, rej) => {
-    let d = ''; req.on('data', c => { d += c; if (d.length > (max || 50000)) { rej(new Error('big')); req.destroy(); } });
-    req.on('end', () => { try { res(JSON.parse(d || '{}')); } catch (e) { rej(e); } });
+    let d = '', big = false; req.on('data', c => { if (big) return; d += c; if (d.length > (max || 50000)) { big = true; d = ''; } });
+    req.on('end', () => { if (big) { const e = new Error('big'); e.code = 413; return rej(e); } try { res(JSON.parse(d || '{}')); } catch (e) { rej(e); } });
   });
 }
 function send(res, code, obj, headers = {}) {
@@ -232,14 +232,14 @@ http.createServer(async (req, res) => {
           { 'Content-Disposition': 'attachment; filename="sihr-aloyoun-backup.json"' });
       }
       if (p === '/api/admin/settings' && req.method === 'POST') {
-        const b = await body(req, 1000000);
+        const b = await body(req, 2500000);
         const cur = await getSettings();
         let ns; try { ns = sanitizeSettings(b); } catch (e) { return send(res, 400, { error: e.message }); }
         await kvSet('settings', Object.assign({}, cur, ns));
         return send(res, 200, { ok: true });
       }
       if (p === '/api/admin/product' && req.method === 'POST') { // إضافة أو تعديل
-        const b = await body(req, 1000000), prods = await getProducts();
+        const b = await body(req, 2500000), prods = await getProducts();
         let x = b.id ? prods.find(q => q.id === b.id) : null;
         if (!x) { x = { id: prods.reduce((m, q) => Math.max(m, q.id), 0) + 1, c1: '#c9a24b', c2: '#5b3a1a', stock: true, tag: null, old: null }; prods.push(x); }
         if (b.name !== undefined) { x.name = clean(b.name, 60); if (!x.name) return send(res, 400, { error: 'الاسم مطلوب' }); }
@@ -264,5 +264,5 @@ http.createServer(async (req, res) => {
     if (!page) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
     fs.createReadStream(path.join(__dirname, page)).pipe(res);
-  } catch (e) { console.error(e); try { send(res, 500, { error: 'خطأ في السيرفر' }); } catch (_) {} }
+  } catch (e) { console.error(e.message); try { if (e.code === 413) return send(res, 413, { error: 'الصورة كبيرة قوي' }); send(res, 500, { error: 'خطأ في السيرفر' }); } catch (_) {} }
 }).listen(PORT, () => console.log('Store running on port ' + PORT));
