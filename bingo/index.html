@@ -30,10 +30,10 @@ footer{text-align:center;color:#888;padding:24px;font-size:13px}
 <div id="cart"><button class="g" onclick="toggleCart()">إغلاق</button><h3>سلتك</h3><div id="items"></div><h3>الإجمالي: <span id="tot">0</span> ج.م</h3>
 <input id="nm" placeholder="الاسم"><input id="ph" placeholder="رقم الموبايل"><input id="ad" placeholder="العنوان">
 <button style="width:100%;margin-top:8px" onclick="order()">إتمام الطلب</button><div id="om" style="font-size:12px;color:#aaa;margin-top:6px">ده موقع تجريبي: الطلب بيتجهز كرسالة تنسخها وتبعتها.</div></div>
-<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button class="g" onclick="t3(this)">3D: مقفول</button><button onclick="snap()">📸 صورة</button><button class="g" onclick="document.getElementById('uf').click()">⬆ صورة هدومك</button><select id="ut" class="g" style="border-radius:10px;padding:8px"><option value="hood">هودي</option><option value="jacket">جاكت</option><option value="tee">تيشيرت</option></select><input type="file" id="uf" accept="image/*" hidden><span id="tn"></span></div>
-<div class="stage"><video id="v" playsinline muted></video><canvas id="c"></canvas></div><div id="msg"></div>
+<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button id="aib" onclick="aiStart()" style="background:#7c4dff;color:#fff">✨ AI حي</button><button class="g" onclick="t3(this)">3D: مقفول</button><button onclick="snap()">📸 صورة</button><button class="g" onclick="document.getElementById('uf').click()">⬆ صورة هدومك</button><select id="ut" class="g" style="border-radius:10px;padding:8px"><option value="hood">هودي</option><option value="jacket">جاكت</option><option value="tee">تيشيرت</option></select><input type="file" id="uf" accept="image/*" hidden><span id="tn"></span></div>
+<div class="stage"><video id="v" playsinline muted></video><video id="av" playsinline autoplay muted style="display:none;transform:scaleX(-1)"></video><div id="aic" style="position:absolute;top:8px;left:8px;background:#000a;padding:4px 10px;border-radius:8px;display:none"></div><canvas id="c"></canvas></div><div id="msg"></div>
 <div class="row" id="tcol"></div></div>
-<footer>بينجو © موقع تجريبي</footer>
+<footer>بينجو © موقع تجريبي<br>التجربة العادية بتشتغل على موبايلك ومفيش فيديو بيتبعت. وضع "AI حي" بيبعت فيديو الكاميرا لخدمة Decart لمدة 30 ثانية.</footer>
 <script type="module">
 import {FilesetResolver,PoseLandmarker} from './lib/vision_bundle.mjs';
 import {prepare,drawGarment,resetSmooth} from './lib/engine.js';
@@ -81,11 +81,37 @@ v.srcObject=stream;await v.play();c.width=v.videoWidth;c.height=v.videoHeight;tr
 document.getElementById('uf').onchange=e=>{const f=e.target.files[0];if(!f)return;cur={id:'up',t:ut.value,n:'صورتك',up:URL.createObjectURL(f)};tn.textContent=cur.n;loadImg()};
 window.tc=k=>{st[cur.id].c=k;loadImg();render()};
 let gar=null;function loadImg(){const i=new Image();i.onload=()=>{gar=prepare(i);if(g3)g3.set(gar)};i.src=cur.up||src(cur)}
-window.closeTry=()=>{run=false;tm.classList.remove('show');stream&&stream.getTracks().forEach(t=>t.stop())}
+window.closeTry=()=>{aiStop();run=false;tm.classList.remove('show');stream&&stream.getTracks().forEach(t=>t.stop())}
 window.snap=()=>{const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const x=o.getContext('2d');x.save();x.translate(o.width,0);x.scale(-1,1);x.drawImage(v,0,0,o.width,o.height);x.restore();x.drawImage(c,0,0);const a=document.createElement('a');a.href=o.toDataURL('image/png');a.download='bingo-tryon.png';a.click()};
 let lt=-1;function loop(){if(!run)return;requestAnimationFrame(loop);if(v.currentTime===lt||!gar)return;lt=v.currentTime;
 const r=lm.detectForVideo(v,performance.now());const W=c.width,H=c.height;ctx.clearRect(0,0,W,H);
 c.style.transform=v.style.transform='scaleX(-1)';
 if(!r.landmarks.length){msg.textContent='مش شايف جسمك، ابعد شوية';resetSmooth();return}
 if(drawGarment(ctx,v,r.landmarks[0],W,H,gar,cur.t,use3?g3:null))msg.textContent='';else msg.textContent='ابعد شوية والكتافين يبانوا'}
+
+// ---- AI live try-on (Decart lucy-vton). Token comes from our server; 30 s cap per try.
+const CEN={أسود:'black',أبيض:'white',رمادي:'grey',كحلي:'navy blue',أحمر:'red',بيج:'beige'};
+const TN={tee:'t-shirt',hood:'hoodie',jacket:'bomber jacket with a zip front'};
+let aiRt=null,aiTimer=null;
+async function garmentBlob(p){const u=p.up||src(p);const im=new Image();await new Promise((r,j)=>{im.onload=r;im.onerror=j;im.src=u});const cv=document.createElement('canvas');cv.width=512;cv.height=512;const x=cv.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,512,512);const k=Math.min(480/im.naturalWidth,480/im.naturalHeight);x.drawImage(im,(512-im.naturalWidth*k)/2,(512-im.naturalHeight*k)/2,im.naturalWidth*k,im.naturalHeight*k);return new Promise(r=>cv.toBlob(r,'image/png'))}
+window.aiStop=()=>{clearInterval(aiTimer);try{aiRt&&aiRt.disconnect()}catch(e){}aiRt=null;av.style.display='none';aic.style.display='none';if(av.srcObject){av.srcObject.getTracks().forEach(t=>t.stop());av.srcObject=null}aib.textContent='✨ AI حي'};
+window.aiStart=async()=>{
+ if(aiRt){aiStop();return}
+ try{const s=await fetch('/api/decart-status').then(r=>r.json());if(!s.enabled){msg.textContent='تجربة AI الحي لسه مش متفعلة (محتاجة مفتاح الخدمة).';return}}catch(e){msg.textContent='تجربة AI الحي لسه مش متفعلة.';return}
+ if(!sessionStorage.getItem('aiok')){if(!confirm('في وضع AI الحي فيديو الكاميرا بيتبعت لسيرفرات شركة Decart عشان يتحول، ومدته 30 ثانية. موافق؟')){return}sessionStorage.setItem('aiok','1')}
+ run=false;stream&&stream.getTracks().forEach(t=>t.stop());ctx.clearRect(0,0,c.width,c.height);
+ msg.textContent='جاري الاتصال بالـ AI...';aib.textContent='⏹ إيقاف';
+ try{
+  const {createDecartClient,models}=await import('./lib/decart.bundle.js');
+  const model=models.realtime('lucy-vton-latest');
+  const cl=createDecartClient({apiKeyProvider:async()=>{const r=await fetch('/api/decart-token',{method:'POST'});if(!r.ok)throw new Error((await r.json().catch(()=>({}))).error||'token '+r.status);return (await r.json()).apiKey}});
+  const cam=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',frameRate:model.fps,width:model.width,height:model.height},audio:false});
+  const col=(CEN[st[cur.id]&&st[cur.id].c]||'');
+  aiRt=await cl.realtime.connect(cam,{model,onRemoteStream:rs=>{av.srcObject=rs;av.style.display='block';v.style.display='none';c.style.display='none'}});
+  const prompt='Substitute the current top with a '+col+' '+(TN[cur.t]||'top')+' with a relaxed casual fit';
+  await aiRt.set({prompt,image:await garmentBlob(cur),enhance:false});
+  msg.textContent='خصوصية: الفيديو بيتبعت لخدمة Decart في الوضع ده.';let left=30;aic.style.display='block';aic.textContent='⏱ '+left;
+  aiTimer=setInterval(()=>{left--;aic.textContent='⏱ '+left;if(left<=0){aiStop();msg.textContent='خلصت الـ30 ثانية. اضغط ✨ AI حي لتجربة تانية.';v.style.display='';c.style.display=''}},1000);
+ }catch(e){msg.textContent='مشكلة في AI الحي: '+(e.message||e);aiStop();v.style.display='';c.style.display=''}
+};
 </script></body></html>
