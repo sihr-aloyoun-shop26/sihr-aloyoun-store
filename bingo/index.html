@@ -1,0 +1,96 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>بينجو | Bingo</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,Tahoma,sans-serif;background:#0e0e12;color:#fff}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;position:sticky;top:0;background:#0e0e12ee;z-index:5}
+h1{margin:0;font-size:26px;letter-spacing:1px}h1 span{color:#ffc400}
+button{font:inherit;cursor:pointer;border:0;border-radius:10px;padding:10px 14px;background:#ffc400;color:#111;font-weight:700}
+button.g{background:#2a2a33;color:#fff}
+.hero{padding:30px 18px;text-align:center;background:linear-gradient(135deg,#1b1b25,#2b1d00)}.hero h2{margin:0 0 6px;font-size:28px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;padding:18px}
+.card{background:#181820;border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.card .im{aspect-ratio:1;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#34343f,#15151b)}
+.card .im img{width:80%;filter:drop-shadow(0 10px 14px #0008)}
+.card .b{padding:12px;display:flex;flex-direction:column;gap:8px}.row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.dot{width:22px;height:22px;border-radius:50%;border:2px solid #444;padding:0}.dot.on{border-color:#fff}
+.sz button{padding:5px 9px;background:#2a2a33;color:#fff}.sz button.on{background:#ffc400;color:#111}
+.price{font-weight:800;color:#ffc400}
+.modal{position:fixed;inset:0;background:#000d;display:none;flex-direction:column;align-items:center;z-index:20;padding:10px;overflow:auto}.modal.show{display:flex}
+.stage{position:relative;width:min(96vw,480px);aspect-ratio:3/4;background:#000;border-radius:14px;overflow:hidden}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+#msg{padding:8px;color:#ffc400;text-align:center}
+#cart{position:fixed;left:0;top:0;bottom:0;width:min(340px,92vw);background:#181820;transform:translateX(-100%);transition:.25s;z-index:30;padding:16px;overflow:auto}#cart.show{transform:none}
+.ci{display:flex;justify-content:space-between;border-bottom:1px solid #333;padding:8px 0;font-size:14px}
+input{width:100%;padding:10px;border-radius:8px;border:0;margin:4px 0;font:inherit}
+footer{text-align:center;color:#888;padding:24px;font-size:13px}
+</style></head><body>
+<header><h1>بين<span>جو</span></h1><button onclick="toggleCart()">🛒 السلة (<span id="cn">0</span>)</button></header>
+<div class="hero"><h2>هودي · جاكت · تيشيرت</h2><div>جرّب القطعة عليك بالكاميرا قبل ما تشتري</div></div>
+<div class="grid" id="grid"></div>
+<div id="cart"><button class="g" onclick="toggleCart()">إغلاق</button><h3>سلتك</h3><div id="items"></div><h3>الإجمالي: <span id="tot">0</span> ج.م</h3>
+<input id="nm" placeholder="الاسم"><input id="ph" placeholder="رقم الموبايل"><input id="ad" placeholder="العنوان">
+<button style="width:100%;margin-top:8px" onclick="order()">إتمام الطلب</button><div id="om" style="font-size:12px;color:#aaa;margin-top:6px">ده موقع تجريبي: الطلب بيتجهز كرسالة تنسخها وتبعتها.</div></div>
+<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button onclick="snap()">📸 صورة</button><span id="tn"></span></div>
+<div class="stage"><video id="v" playsinline muted></video><canvas id="c"></canvas></div><div id="msg"></div>
+<div class="row" id="tcol"></div></div>
+<footer>بينجو © موقع تجريبي</footer>
+<script type="module">
+import {FilesetResolver,PoseLandmarker} from './lib/vision_bundle.mjs';
+const COLORS={أسود:'#16161a',أبيض:'#f1f1f1',رمادي:'#7b7f86',كحلي:'#1c2c52',أحمر:'#b3202a',بيج:'#c9b08a'};
+const P=[
+{id:'tee1',t:'tee',n:'تيشيرت كلاسيك',p:350,c:'أبيض'},{id:'tee2',t:'tee',n:'تيشيرت أوفرسايز',p:420,c:'أسود'},
+{id:'hood1',t:'hood',n:'هودي بينجو',p:750,c:'رمادي'},{id:'hood2',t:'hood',n:'هودي كحلي',p:780,c:'كحلي'},
+{id:'jac1',t:'jacket',n:'جاكت بومبر',p:1100,c:'أسود'},{id:'jac2',t:'jacket',n:'جاكت جينز',p:1250,c:'كحلي'}];
+const SZ=['S','M','L','XL'];
+function shade(h,a){let n=parseInt(h.slice(1),16),r=n>>16,g=n>>8&255,b=n&255,f=x=>Math.max(0,Math.min(255,Math.round(x+a)));return'#'+[f(r),f(g),f(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+function svg(t,col){const d=shade(col,-35),l=shade(col,28);
+const body={tee:`<path d="M60 30 L20 55 L38 100 L62 88 L62 230 L238 230 L238 88 L262 100 L280 55 L240 30 Q150 70 60 30Z" fill="url(#g)"/><path d="M60 30 Q150 70 240 30 Q150 105 60 30Z" fill="${d}"/>`,
+hood:`<path d="M62 40 L14 70 L26 200 L62 196 L62 250 L238 250 L238 196 L274 200 L286 70 L238 40 Q150 80 62 40Z" fill="url(#g)"/><path d="M80 40 Q150 -14 220 40 Q150 120 80 40Z" fill="${d}"/><rect x="100" y="205" width="100" height="36" rx="8" fill="${d}"/><path d="M135 90 V150 M165 90 V150" stroke="#ddd" stroke-width="4"/><rect x="26" y="190" width="36" height="16" fill="${d}"/><rect x="238" y="190" width="36" height="16" fill="${d}"/>`,
+jacket:`<path d="M62 36 L14 66 L26 210 L62 206 L62 250 L238 250 L238 206 L274 210 L286 66 L238 36 Q150 70 62 36Z" fill="url(#g)"/><path d="M150 60 V250" stroke="${d}" stroke-width="5"/><path d="M62 36 Q150 80 150 60 Q150 80 238 36 L222 20 Q150 50 78 20Z" fill="${d}"/><rect x="26" y="200" width="36" height="16" fill="${d}"/><rect x="238" y="200" width="36" height="16" fill="${d}"/><rect x="80" y="160" width="40" height="8" rx="3" fill="${d}"/><rect x="180" y="160" width="40" height="8" rx="3" fill="${d}"/>`};
+return`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 260"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${l}"/><stop offset=".6" stop-color="${col}"/><stop offset="1" stop-color="${d}"/></linearGradient></defs>${body[t]}</svg>`}
+const uri=(t,c)=>'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg(t,COLORS[c]));
+const st={};P.forEach(p=>st[p.id]={c:p.c,s:'M'});
+// real photo override: put a transparent PNG at photos/<id>.png
+const photo={};
+P.forEach(p=>{const i=new Image();i.onload=()=>{photo[p.id]=i;render()};i.src='photos/'+p.id+'.png'});
+const src=p=>photo[p.id]?photo[p.id].src:uri(p.t,st[p.id].c);
+function render(){grid.innerHTML=P.map(p=>`<div class="card"><div class="im"><img src="${src(p)}"></div><div class="b"><b>${p.n}</b><div class="price">${p.p} ج.م</div>
+${photo[p.id]?'':`<div class="row">${Object.keys(COLORS).map(c=>`<button class="dot ${st[p.id].c==c?'on':''}" style="background:${COLORS[c]}" onclick="setC('${p.id}','${c}')"></button>`).join('')}</div>`}
+<div class="row sz">${SZ.map(s=>`<button class="${st[p.id].s==s?'on':''}" onclick="setS('${p.id}','${s}')">${s}</button>`).join('')}</div>
+<div class="row"><button onclick="add('${p.id}')">أضف للسلة</button><button class="g" onclick="openTry('${p.id}')">جرّبها عليك 📷</button></div></div></div>`).join('')}
+window.setC=(i,c)=>{st[i].c=c;render()};window.setS=(i,s)=>{st[i].s=s;render()};
+let cart=[];window.add=i=>{const p=P.find(x=>x.id==i);cart.push({n:p.n,c:st[i].c,s:st[i].s,p:p.p});drawCart();cartEl.classList.add('show')};
+const cartEl=document.getElementById('cart');window.toggleCart=()=>cartEl.classList.toggle('show');
+function drawCart(){cn.textContent=cart.length;items.innerHTML=cart.map((x,k)=>`<div class="ci"><span>${x.n} (${x.c}, ${x.s})</span><span>${x.p} <a href="#" onclick="rm(${k});return false" style="color:#f66">✕</a></span></div>`).join('');tot.textContent=cart.reduce((a,x)=>a+x.p,0)}
+window.rm=k=>{cart.splice(k,1);drawCart()};
+window.order=()=>{if(!cart.length)return;const t='طلب جديد من بينجو\n'+cart.map(x=>`${x.n} - ${x.c} - ${x.s} - ${x.p}`).join('\n')+`\nالإجمالي: ${tot.textContent} ج.م\n${nm.value} | ${ph.value} | ${ad.value}`;navigator.clipboard&&navigator.clipboard.writeText(t);om.textContent='تم نسخ الطلب. ابعته لصاحب المتجر.';alert(t)};
+render();
+// ---- try-on
+let lm=null,stream=null,cur=null,run=false,img=null,lastPts=null;
+const ctx=c.getContext('2d');
+async function initModel(){if(lm)return;msg.textContent='جاري تحميل الموديل...';
+const f=await FilesetResolver.forVisionTasks('./wasm');
+lm=await PoseLandmarker.createFromOptions(f,{baseOptions:{modelAssetPath:'./lib/pose.task'},runningMode:'VIDEO',numPoses:1});}
+window.openTry=async i=>{cur=P.find(x=>x.id==i);tm.classList.add('show');tn.textContent=cur.n;
+tcol.innerHTML=photo[i]?'':Object.keys(COLORS).map(k=>`<button class="dot" style="background:${COLORS[k]}" onclick="tc('${k}')"></button>`).join('');loadImg();
+try{await initModel();msg.textContent='جاري فتح الكاميرا...';stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:720,height:960},audio:false});
+v.srcObject=stream;await v.play();c.width=v.videoWidth;c.height=v.videoHeight;msg.textContent='وقف بعيد حوالي متر، الكتافين ظاهرين';run=true;loop()}catch(e){msg.textContent='مش قادر يفتح الكاميرا: '+e.message}}
+window.tc=k=>{st[cur.id].c=k;loadImg();render()};
+function loadImg(){img=new Image();img.src=src(cur)}
+window.closeTry=()=>{run=false;tm.classList.remove('show');stream&&stream.getTracks().forEach(t=>t.stop())}
+window.snap=()=>{const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const x=o.getContext('2d');x.save();x.translate(o.width,0);x.scale(-1,1);x.drawImage(v,0,0,o.width,o.height);x.restore();x.drawImage(c,0,0);const a=document.createElement('a');a.href=o.toDataURL('image/png');a.download='bingo-tryon.png';a.click()};
+function sm(pts){if(!lastPts)return lastPts=pts;return lastPts=pts.map((p,i)=>({x:lastPts[i].x*.6+p.x*.4,y:lastPts[i].y*.6+p.y*.4}))}
+let lt=-1;function loop(){if(!run)return;requestAnimationFrame(loop);if(v.currentTime===lt)return;lt=v.currentTime;
+const r=lm.detectForVideo(v,performance.now());const W=c.width,H=c.height;ctx.clearRect(0,0,W,H);
+// canvas is mirrored via CSS, draw in video coordinates
+c.style.transform=v.style.transform='scaleX(-1)';
+if(!r.landmarks.length){msg.textContent='مش شايف جسمك، ابعد شوية';return}msg.textContent='';
+const L=r.landmarks[0];const q=sm([L[11],L[12],L[23],L[24],L[13],L[14]].map(p=>({x:p.x*W,y:p.y*H})));
+const[ls,rs,lh,rh]=q;const sw=Math.hypot(ls.x-rs.x,ls.y-rs.y);const cx=(ls.x+rs.x)/2,cy=(ls.y+rs.y)/2;
+const hx=(lh.x+rh.x)/2,hy=(lh.y+rh.y)/2;const ang=Math.atan2(rs.y-ls.y,rs.x-ls.x)+Math.PI;
+// garment image shoulders span ~ 62..238 of 300 wide => 176/300; neck top y~30/260
+const t=cur.t,k=t=='tee'?1.55:1.62;const gw=sw*k*1.0;const aspect=img.naturalHeight/img.naturalWidth;const gh=gw*aspect;
+const tl=Math.hypot(hx-cx,hy-cy);const hgt=t=='tee'?Math.max(gh,tl*1.15):Math.max(gh,tl*1.3);
+ctx.save();ctx.translate(cx,cy);ctx.rotate(Math.atan2(ls.y-rs.y,ls.x-rs.x));
+ctx.drawImage(img,-gw/2,-hgt*0.115,gw,hgt);ctx.restore()}
+</script></body></html>
