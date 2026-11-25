@@ -242,6 +242,18 @@ async function mhUpload(img) {
   return it.file_path;
 }
 
+
+// Product photos (lossy WebP with transparency, served under the .png names the page asks for), stored as compressed text parts
+let photoMap = null;
+function bingoPhoto(name) {
+  if (!photoMap) {
+    let b64 = '';
+    for (let i = 1; ; i++) { const f = path.join(__dirname, 'bingo', 'photos.z64.' + i + '.txt'); if (!fs.existsSync(f)) break; b64 += fs.readFileSync(f, 'utf8').replace(/\s+/g, ''); }
+    try { photoMap = JSON.parse(require('zlib').inflateSync(Buffer.from(b64, 'base64')).toString()); } catch (e) { photoMap = {}; }
+  }
+  return Object.prototype.hasOwnProperty.call(photoMap, name) ? Buffer.from(photoMap[name], 'base64') : null;
+}
+
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x'), p = url.pathname;
@@ -397,6 +409,7 @@ http.createServer(async (req, res) => {
       let buf = null;
       if (APPS[app][rel]) buf = await tryonAsset(app, rel);
       else if (app === 'bingo' && rel === 'lib/decart.bundle.js') buf = decartBundle();
+      else if (app === 'bingo' && /^photos\/[A-Za-z0-9_.-]+$/.test(rel)) { buf = bingoPhoto(rel.slice(7)); if (buf && rel.endsWith('.png')) { res.writeHead(200, { 'Content-Type': 'image/webp', 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400' }); return res.end(buf); } }
       else {
         const root = path.join(__dirname, app), fp = path.normalize(path.join(root, rel));
         if (fp.startsWith(root + path.sep) && /\.(html|js)$/.test(fp) && fs.existsSync(fp) && fs.statSync(fp).isFile()) buf = fs.readFileSync(fp);
