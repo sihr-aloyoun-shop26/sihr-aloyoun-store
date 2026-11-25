@@ -165,7 +165,8 @@ const BINGO_ASSETS = {
   'lib/vision_bundle.mjs': [MP14 + 'vision_bundle.mjs', 'e77f281f9619150d937023c355bae170e9120e3b9e43f1e23a2a7bee07197669'],
   'wasm/vision_wasm_internal.js': [MP14 + 'wasm/vision_wasm_internal.js', '9440cf0cc0cea21800e31581ec32aeedcc5fbf9df4509796bbc7d3f99e52ab9c'],
   'wasm/vision_wasm_internal.wasm': [MP14 + 'wasm/vision_wasm_internal.wasm', 'f82a8e6c05e08a44cc9f9e7ec5f845935bcbb1b1500ebe8c2f4812fb4e2917dc'],
-  'lib/pose.task': TRYON_ASSETS['lib/pose.task']
+  'lib/pose.task': TRYON_ASSETS['lib/pose.task'],
+  'lib/three.module.js': ['https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js', '76dea8151bc9352aef3528b4262e249b2604f62543828328db978d060d61a495']
 };
 const APPS = { tryon: TRYON_ASSETS, bingo: BINGO_ASSETS };
 const tryonMem = {}, tryonBusy = {};
@@ -307,7 +308,10 @@ http.createServer(async (req, res) => {
       const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
       let buf = null;
       if (APPS[app][rel]) buf = await tryonAsset(app, rel);
-      else if (rel === 'index.html') buf = fs.readFileSync(path.join(__dirname, app, 'index.html'));
+      else {
+        const root = path.join(__dirname, app), fp = path.normalize(path.join(root, rel));
+        if (fp.startsWith(root + path.sep) && /\.(html|js)$/.test(fp) && fs.existsSync(fp) && fs.statSync(fp).isFile()) buf = fs.readFileSync(fp);
+      }
       if (!buf) { res.writeHead(404); return res.end('Not found'); }
       const ext = path.extname(rel).toLowerCase();
       res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Content-Length': buf.length, 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400' });
