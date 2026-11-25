@@ -70,6 +70,8 @@ section{padding:90px 6%}
 .card{background:var(--dark2);border:1px solid rgba(201,162,75,.18);border-radius:18px;padding:26px 20px;
   text-align:center;transition:transform .35s,border-color .35s,box-shadow .35s;position:relative;overflow:hidden}
 .card:hover{transform:translateY(-8px);border-color:var(--gold);box-shadow:0 20px 44px rgba(0,0,0,.5)}
+.pimg{width:100%;height:190px;object-fit:cover;border-radius:12px;margin-bottom:16px;display:block}
+.logo img{height:46px;display:block}
 .card .bottle{width:88px;height:130px;margin:0 auto 18px;position:relative;transition:transform .4s}
 .card:hover .bottle{transform:scale(1.08) rotate(-2deg)}
 .bottle .b-glass{position:absolute;inset:24px 8px 0 8px;border-radius:10px 10px 15px 15px;
@@ -182,7 +184,7 @@ footer .logo{margin-bottom:8px}
 <body>
 
 <nav>
-  <div class="logo">سحر العيون<span>SIHR AL-OYOUN</span></div>
+  <div class="logo" data-logo></div>
   <ul class="nav-links">
     <li><a href="#home">الرئيسية</a></li>
     <li><a href="#collection">المجموعة</a></li>
@@ -198,9 +200,9 @@ footer .logo{margin-bottom:8px}
     <div class="hero-bottle">
       <div class="cap"></div><div class="neck"></div><div class="glass"></div><div class="liquid"></div>
     </div>
-    <div class="eyebrow">عطور شرقية فاخرة</div>
-    <h1>سحر <em>العيون</em></h1>
-    <p class="sub">عطور تُصنع من أجود المكونات الشرقية والفرنسية، ثبات يدوم وفوحان يسحر كل من حولك.</p>
+    <div class="eyebrow" id="heroEyebrow">عطور شرقية فاخرة</div>
+    <h1 id="heroTitle"></h1>
+    <p class="sub" id="heroSub">عطور تُصنع من أجود المكونات الشرقية والفرنسية، ثبات يدوم وفوحان يسحر كل من حولك.</p>
     <a href="#collection" class="btn btn-gold">تسوّق المجموعة</a>
     <a href="#about" class="btn btn-ghost">اعرف أكتر</a>
   </div>
@@ -209,8 +211,8 @@ footer .logo{margin-bottom:8px}
 <!-- COLLECTION -->
 <section id="collection">
   <div class="section-head">
-    <div class="eyebrow">المجموعة</div>
-    <h2>عطورنا المميزة</h2>
+    <div class="eyebrow" id="collectionEyebrow">المجموعة</div>
+    <h2 id="collectionTitle">عطورنا المميزة</h2>
     <div class="divider"></div>
   </div>
   <div class="grid" id="productGrid"></div>
@@ -220,15 +222,10 @@ footer .logo{margin-bottom:8px}
 <section class="about" id="about">
   <div class="about-inner">
     <div class="about-text">
-      <h2>حكاية <span style="color:var(--gold)">سحر العيون</span></h2>
-      <p>بدأنا بفكرة بسيطة: العطر مش رائحة وبس، العطر حضور. من قلب مصر، بنختار أجود أنواع العود والمسك والعنبر ونمزجها بخبرة عشان نوصلك بعطر يعبّر عنك ويفضل معاك طول اليوم.</p>
+      <h2 id="aboutTitle"></h2>
+      <p id="aboutText">بدأنا بفكرة بسيطة: العطر مش رائحة وبس، العطر حضور. من قلب مصر، بنختار أجود أنواع العود والمسك والعنبر ونمزجها بخبرة عشان نوصلك بعطر يعبّر عنك ويفضل معاك طول اليوم.</p>
     </div>
-    <div class="features">
-      <div class="feature"><div class="ico">🌿</div><div><b>مكونات طبيعية فاخرة</b><span>زيوت عطرية مركزة من أجود المصادر</span></div></div>
-      <div class="feature"><div class="ico">⏳</div><div><b>ثبات يدوم 12 ساعة+</b><span>تركيبات مركزة تفضل معاك طول اليوم</span></div></div>
-      <div class="feature"><div class="ico">🚚</div><div><b>شحن لكل المحافظات</b><span>توصيل سريع خلال 2-5 أيام عمل</span></div></div>
-      <div class="feature"><div class="ico">💳</div><div><b>الدفع عند الاستلام</b><span>اطلب وادفع لما يوصلك العطر</span></div></div>
-    </div>
+    <div class="features" id="featuresBox"></div>
   </div>
 </section>
 
@@ -236,20 +233,16 @@ footer .logo{margin-bottom:8px}
 <section id="reviews">
   <div class="section-head">
     <div class="eyebrow">آراء العملاء</div>
-    <h2>قالوا عنّا</h2>
+    <h2 id="reviewsTitle">قالوا عنّا</h2>
     <div class="divider"></div>
   </div>
-  <div class="reviews-grid">
-    <div class="review"><div class="stars">★★★★★</div><p>"عطر ليالي العود فخم جداً، ثباته فوق الوصف. كل مرة حد يسألني لابس إيه."</p><b>— محمد س.</b></div>
-    <div class="review"><div class="stars">★★★★★</div><p>"طلبت همسة المسك هدية لوالدتي، التغليف والرائحة كانوا على أعلى مستوى."</p><b>— سلمى ع.</b></div>
-    <div class="review"><div class="stars">★★★★☆</div><p>"فانيليا الغروب ريحته دافية وحلوة، والتوصيل وصل في يومين. هطلب تاني أكيد."</p><b>— كريم م.</b></div>
-  </div>
+  <div class="reviews-grid" id="reviewsBox"></div>
 </section>
 
 <footer>
-  <div class="logo">سحر العيون<span>SIHR AL-OYOUN</span></div>
-  <p>عطور شرقية فاخرة · صنع بحب في مصر</p>
-  <p style="margin-top:8px;font-size:.85rem">© 2026 سحر العيون — جميع الحقوق محفوظة</p>
+  <div class="logo" data-logo></div>
+  <p id="footerText">عطور شرقية فاخرة · صنع بحب في مصر</p>
+  <p id="copyright" style="margin-top:8px;font-size:.85rem">© 2026 سحر العيون — جميع الحقوق محفوظة</p>
 </footer>
 
 <!-- CART DRAWER -->
@@ -326,14 +319,14 @@ function renderProducts(){grid.innerHTML='';
 PRODUCTS.forEach(p=>{
   const card=document.createElement('div');card.className='card';
   card.innerHTML=`
-    ${p.tag?`<div class="tag">${p.tag}</div>`:''}
-    <div class="bottle">
+    ${p.tag?`<div class="tag">${esc(p.tag)}</div>`:''}
+    ${p.image?`<img class="pimg" src="${p.image}" alt="${esc(p.name)}">`:`<div class="bottle">
       <div class="b-cap"></div><div class="b-neck"></div>
       <div class="b-glass"></div>
       <div class="b-liquid" style="background:linear-gradient(180deg,${p.c1},${p.c2})"></div>
-    </div>
-    <h3>${p.name}</h3>
-    <div class="notes">${p.notes}</div>
+    </div>`}
+    <h3>${esc(p.name)}</h3>
+    <div class="notes">${esc(p.notes)}</div>
     <div class="price">${fmt(p.price)}${p.old?`<small>${fmt(p.old)}</small>`:''}</div>
     ${p.stock===false?'<button class="add-btn" disabled style="opacity:.5">نفد المخزون</button>':`<button class="add-btn" onclick="addToCart(${p.id},this)">أضف للسلة</button>`}`;
   grid.appendChild(card);
@@ -366,7 +359,7 @@ function renderCart(){
   body.innerHTML=ids.map(id=>{
     const p=PRODUCTS.find(x=>x.id==id);const q=cart[id];
     return `<div class="cart-item">
-      <div class="mini-bottle" style="background:linear-gradient(180deg,${p.c1},${p.c2})"></div>
+      <div class="mini-bottle" style="background:${p.image?`url(${p.image}) center/cover`:`linear-gradient(180deg,${p.c1},${p.c2})`}"></div>
       <div class="info"><b>${p.name}</b><span>${fmt(p.price)}</span><br><button class="remove" onclick="removeItem(${p.id})">حذف</button></div>
       <div class="qty"><button onclick="changeQty(${p.id},1)">+</button><span>${q}</span><button onclick="changeQty(${p.id},-1)">−</button></div>
     </div>`;
@@ -416,7 +409,23 @@ async function placeOrder(){
 }
 function finishOrder(){document.getElementById('checkoutModal').classList.remove('open')}
 
-fetch('/api/products').then(r=>r.json()).then(d=>{PRODUCTS=d;
+function esc(t){return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function applySettings(S){
+  document.querySelectorAll('[data-logo]').forEach(el=>{el.innerHTML=S.logoImage?`<img src="${S.logoImage}" alt="${esc(S.brandName)}">`:`${esc(S.brandName)}<span>${esc(S.brandSub)}</span>`});
+  const T=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v};
+  T('heroEyebrow',S.heroEyebrow);T('heroSub',S.heroSub);T('collectionEyebrow',S.collectionEyebrow);T('collectionTitle',S.collectionTitle);
+  T('aboutText',S.aboutText);T('reviewsTitle',S.reviewsTitle);T('footerText',S.footerText);T('copyright',S.copyright);
+  document.getElementById('heroTitle').innerHTML=esc(S.heroTitle1)+' <em>'+esc(S.heroTitle2)+'</em>';
+  document.getElementById('aboutTitle').innerHTML=esc(S.aboutTitle1)+' <span style="color:var(--gold)">'+esc(S.aboutTitle2)+'</span>';
+  document.getElementById('featuresBox').innerHTML=(S.features||[]).map(f=>`<div class="feature"><div class="ico">${esc(f.ico)}</div><div><b>${esc(f.title)}</b><span>${esc(f.desc)}</span></div></div>`).join('');
+  document.getElementById('reviewsBox').innerHTML=(S.reviews||[]).map(r=>`<div class="review"><div class="stars">${'★'.repeat(r.stars)}${'☆'.repeat(5-r.stars)}</div><p>"${esc(r.text)}"</p><b>— ${esc(r.name)}</b></div>`).join('');
+  const R=document.documentElement.style;
+  R.setProperty('--gold',S.colorGold);R.setProperty('--gold-light',S.colorGoldLight);R.setProperty('--dark',S.colorBg);R.setProperty('--dark2',S.colorCard);R.setProperty('--cream',S.colorText);
+  document.getElementById('about').style.display=S.showAbout===false?'none':'';
+  document.getElementById('reviews').style.display=S.showReviews===false?'none':'';
+  document.title=S.brandName+' | عطور';
+}
+fetch('/api/site').then(r=>r.json()).then(({settings,products})=>{applySettings(settings);return products}).then(d=>{PRODUCTS=d;
   for(const id of Object.keys(cart)){if(!PRODUCTS.find(p=>p.id==id&&p.stock!==false))delete cart[id]}
   saveCart();renderProducts();renderCart();
 }).catch(()=>{document.getElementById('productGrid').innerHTML='<p style="text-align:center">تعذر تحميل المنتجات، حدّث الصفحة.</p>'});
