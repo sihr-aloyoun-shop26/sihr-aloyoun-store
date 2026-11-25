@@ -1,0 +1,77 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>تجربة اللبس بالكاميرا</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0f0d0a;color:#f3e9d2;font-family:system-ui,Tahoma,sans-serif;text-align:center}
+h1{font-size:20px;margin:14px 8px 4px;color:#d4af37}p.s{margin:0 12px 10px;font-size:13px;opacity:.8}
+#stage{position:relative;width:min(96vw,640px);aspect-ratio:3/4;margin:0 auto;background:#1b1712;border-radius:14px;overflow:hidden}
+video,canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+video{transform:scaleX(-1)}#msg{position:absolute;inset:auto 0 0 0;padding:8px;background:#000a;font-size:13px}
+button,label.b{background:#d4af37;color:#1a1408;border:0;border-radius:10px;padding:10px 16px;margin:5px;font-size:15px;font-weight:700;cursor:pointer;display:inline-block}
+.sw{display:inline-block;width:38px;height:38px;border-radius:50%;margin:4px;border:3px solid transparent;cursor:pointer}
+.sw.on{border-color:#fff}.row{margin:8px}.g.on{outline:3px solid #fff}
+</style></head><body>
+<h1>تجربة اللبس بالكاميرا</h1><p class="s">افتح الكاميرا، اختار القطعة، ووقف بحيث يظهر جسمك من الراس للوسط.</p>
+<div id="stage"><video id="v" playsinline muted></video><canvas id="c"></canvas><div id="msg">اضغط "افتح الكاميرا"</div></div>
+<div class="row"><button id="go">افتح الكاميرا</button><button id="snap">صورة</button></div>
+<div class="row" id="types"></div><div class="row" id="cols"></div>
+<div class="row"><label class="b">ارفع قطعتك (PNG شفاف)<input id="up" type="file" accept="image/png,image/webp" hidden></label></div>
+<p class="s">الصورة بتتعالج على جهازك فقط، مفيش حاجة بتترفع لأي سيرفر.</p>
+<script type="module">
+import {PoseLandmarker,FilesetResolver} from './lib/vision_bundle.mjs';
+const $=id=>document.getElementById(id),v=$('v'),cv=$('c'),ctx=cv.getContext('2d'),msg=$('msg');
+let pose,run=false,type='tshirt',color='#1f3a5f',custom=null,sm=null;
+const types={tshirt:'تيشيرت',suit:'طقم (جاكيت)',hoodie:'هودي'};
+const cols=['#1f3a5f','#111111','#8b1e2d','#f2f2f2','#2f6b3f','#d4af37'];
+for(const k in types){const b=document.createElement('button');b.textContent=types[k];b.className='g'+(k===type?' on':'');b.onclick=()=>{type=k;custom=null;[...$('types').children].forEach(x=>x.classList.toggle('on',x===b))};$('types').append(b)}
+cols.forEach((c,i)=>{const s=document.createElement('span');s.className='sw'+(i?'':' on');s.style.background=c;s.onclick=()=>{color=c;[...$('cols').children].forEach(x=>x.classList.toggle('on',x===s))};$('cols').append(s)});
+$('up').onchange=e=>{const f=e.target.files[0];if(!f)return;const i=new Image();i.onload=()=>custom=i;i.src=URL.createObjectURL(f)};
+function shade(h,a){const n=parseInt(h.slice(1),16);let r=n>>16,g=n>>8&255,b=n&255;const f=x=>Math.max(0,Math.min(255,Math.round(x+a)));return`rgb(${f(r)},${f(g)},${f(b)})`}
+// draw garment in unit space: x -1..1 (shoulder to shoulder = -1..1 at y=0), y 0 (shoulders) .. 1 (hips)
+function garment(){
+ const c=color,d=shade(c,-45);ctx.fillStyle=c;ctx.strokeStyle=d;ctx.lineWidth=.02;ctx.lineJoin='round';
+ const slL=type==='tshirt'?.55:1.25;
+ ctx.beginPath();ctx.moveTo(-.45,-.08);ctx.quadraticCurveTo(0,.12,.45,-.08);ctx.lineTo(1.05,.05);ctx.lineTo(1.05+.12,slL*.45);ctx.lineTo(.92,slL*.45+.03);ctx.lineTo(.88,.35);ctx.lineTo(.84,1.15);ctx.lineTo(-.84,1.15);ctx.lineTo(-.88,.35);ctx.lineTo(-.92,slL*.45+.03);ctx.lineTo(-1.17,slL*.45);ctx.lineTo(-1.05,.05);ctx.closePath();ctx.fill();ctx.stroke();
+ ctx.fillStyle=shade(c,-25);ctx.beginPath();ctx.ellipse(0,-.02,.3,.12,0,0,Math.PI);ctx.fill();
+ if(type==='suit'){ctx.fillStyle=shade(c,-30);ctx.beginPath();ctx.moveTo(-.3,-.02);ctx.lineTo(0,.7);ctx.lineTo(-.02,1.15);ctx.lineTo(-.84,1.15);ctx.lineTo(-.7,.2);ctx.fill();ctx.beginPath();ctx.moveTo(.3,-.02);ctx.lineTo(0,.7);ctx.lineTo(.02,1.15);ctx.lineTo(.84,1.15);ctx.lineTo(.7,.2);ctx.fill();
+  ctx.fillStyle='#f5f5f5';ctx.beginPath();ctx.moveTo(-.28,-.02);ctx.lineTo(.28,-.02);ctx.lineTo(0,.65);ctx.fill();ctx.fillStyle=shade(c,-10);ctx.beginPath();ctx.moveTo(-.04,.05);ctx.lineTo(.04,.05);ctx.lineTo(.06,.5);ctx.lineTo(0,.58);ctx.lineTo(-.06,.5);ctx.fill();
+  ctx.strokeStyle=d;ctx.beginPath();ctx.moveTo(0,.7);ctx.lineTo(0,1.15);ctx.stroke()}
+ if(type==='hoodie'){ctx.fillStyle=shade(c,-20);ctx.beginPath();ctx.ellipse(0,-.1,.4,.12,0,0,Math.PI*2);ctx.fill();ctx.fillStyle=shade(c,-60);ctx.beginPath();ctx.ellipse(0,.0,.28,.1,0,0,Math.PI);ctx.fill();ctx.fillStyle=shade(c,-12);ctx.fillRect(-.45,.75,.9,.2);ctx.stroke()}
+}
+function frame(){
+ if(!run)return;requestAnimationFrame(frame);
+ if(v.readyState<2)return;
+ if(cv.width!==v.videoWidth){cv.width=v.videoWidth;cv.height=v.videoHeight}
+ const W=cv.width,H=cv.height;ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,W,H);
+ ctx.setTransform(-1,0,0,1,W,0); // mirror like the video
+ const r=pose.detectForVideo(v,performance.now());const L=r.landmarks&&r.landmarks[0];
+ if(!L||L[11].visibility<.4||L[12].visibility<.4){msg.textContent='وقف قدام الكاميرا بحيث يظهر جسمك من الراس للوسط';return}
+ msg.textContent='';
+ // landmark 11 = person's left shoulder (appears on image right); use pixel coords
+ const P=i=>({x:L[i].x*W,y:L[i].y*H});
+ const a=P(11),b=P(12),ha=P(23),hb=P(24);
+ const hipOk=L[23].visibility>.3&&L[24].visibility>.3;
+ const cx=(a.x+b.x)/2,cy=(a.y+b.y)/2,sw=Math.hypot(a.x-b.x,a.y-b.y);
+ let ang=Math.atan2(b.y-a.y,b.x-a.x);if(ang>Math.PI/2)ang-=Math.PI;if(ang<-Math.PI/2)ang+=Math.PI;
+ let th=hipOk?Math.hypot((ha.x+hb.x)/2-cx,(ha.y+hb.y)/2-cy):sw*1.6;
+ const t={cx,cy,sw,ang,th};
+ if(sm){for(const k in t)sm[k]+=(t[k]-sm[k])*.45}else sm=t;
+ ctx.save();ctx.translate(sm.cx,sm.cy-sm.th*.03);ctx.rotate(sm.ang);
+ const sx=sm.sw/2*1.35,sy=sm.th/1.05;
+ if(custom){const w=sm.sw*1.9,h=w*custom.height/custom.width;ctx.drawImage(custom,-w/2,-h*.12,w,h)}
+ else{ctx.scale(sx,sy);garment()}
+ ctx.restore();
+}
+$('go').onclick=async()=>{
+ try{
+  msg.textContent='جاري تحميل الموديل...';
+  if(!pose){const fs=await FilesetResolver.forVisionTasks('./wasm');
+   pose=await PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'./lib/pose.task',delegate:'GPU'},runningMode:'VIDEO',numPoses:1}).catch(()=>PoseLandmarker.createFromOptions(fs,{baseOptions:{modelAssetPath:'./lib/pose.task'},runningMode:'VIDEO',numPoses:1}))}
+  const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:960},height:{ideal:1280}},audio:false});
+  v.srcObject=s;await v.play();run=true;sm=null;$('go').textContent='شغّال';frame();
+ }catch(e){msg.textContent='مش قادر يفتح الكاميرا: '+(e.name==='NotAllowedError'?'لازم تسمح للكاميرا من المتصفح':e.name==='NotFoundError'?'مفيش كاميرا':e.message)}
+};
+$('snap').onclick=()=>{if(!run)return;const o=document.createElement('canvas');o.width=cv.width;o.height=cv.height;const x=o.getContext('2d');x.translate(o.width,0);x.scale(-1,1);x.drawImage(v,0,0);x.setTransform(1,0,0,1,0,0);x.translate(o.width,0);x.scale(-1,1);x.drawImage(cv,0,0);
+ const a=document.createElement('a');a.href=o.toDataURL('image/jpeg',.9);a.download='tryon.jpg';a.click()};
+window.__t={get ok(){return !!pose}};
+</script></body></html>
