@@ -80,5 +80,8 @@
   "about",
   "reviews"
  ],
- "announcement": ""
+ "announcement": "",
+ "bgStyle": "both",
+ "bgImage": "",
+ "bgDim": 55
 }
