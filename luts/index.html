@@ -1,0 +1,4 @@
+<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Bingo Cinematic LUTs</title><style>body{background:#0b0b10;color:#fff;font-family:sans-serif;text-align:center;padding-top:30vh}</style></head><body><p id="m">جاري التحميل...</p><script>
+(async()=>{try{const N=21;let s='';for(let i=1;i<=N;i++){const r=await fetch('p'+i+'.txt');if(!r.ok)throw 0;s+=await r.text()}
+const bin=Uint8Array.from(atob(s),c=>c.charCodeAt(0));const t=await new Response(new Blob([bin]).stream().pipeThrough(new DecompressionStream('gzip'))).text();document.open();document.write(t);document.close()}catch(e){document.getElementById('m').textContent='تعذر التحميل، حدّث الصفحة'}})();
+</script></body></html>
