@@ -30,7 +30,7 @@ footer{text-align:center;color:#888;padding:24px;font-size:13px}
 <div id="cart"><button class="g" onclick="toggleCart()">إغلاق</button><h3>سلتك</h3><div id="items"></div><h3>الإجمالي: <span id="tot">0</span> ج.م</h3>
 <input id="nm" placeholder="الاسم"><input id="ph" placeholder="رقم الموبايل"><input id="ad" placeholder="العنوان">
 <button style="width:100%;margin-top:8px" onclick="order()">إتمام الطلب</button><div id="om" style="font-size:12px;color:#aaa;margin-top:6px">ده موقع تجريبي: الطلب بيتجهز كرسالة تنسخها وتبعتها.</div></div>
-<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button class="g" onclick="t3(this)">3D: شغال</button><button onclick="snap()">📸 صورة</button><button class="g" onclick="document.getElementById('uf').click()">⬆ صورة هدومك</button><select id="ut" class="g" style="border-radius:10px;padding:8px"><option value="hood">هودي</option><option value="jacket">جاكت</option><option value="tee">تيشيرت</option></select><input type="file" id="uf" accept="image/*" hidden><span id="tn"></span></div>
+<div class="modal" id="tm"><div class="row" style="margin:6px"><button onclick="closeTry()" class="g">✕ إغلاق</button><button class="g" onclick="t3(this)">3D: مقفول</button><button onclick="snap()">📸 صورة</button><button class="g" onclick="document.getElementById('uf').click()">⬆ صورة هدومك</button><select id="ut" class="g" style="border-radius:10px;padding:8px"><option value="hood">هودي</option><option value="jacket">جاكت</option><option value="tee">تيشيرت</option></select><input type="file" id="uf" accept="image/*" hidden><span id="tn"></span></div>
 <div class="stage"><video id="v" playsinline muted></video><canvas id="c"></canvas></div><div id="msg"></div>
 <div class="row" id="tcol"></div></div>
 <footer>بينجو © موقع تجريبي</footer>
@@ -38,7 +38,7 @@ footer{text-align:center;color:#888;padding:24px;font-size:13px}
 import {FilesetResolver,PoseLandmarker} from './lib/vision_bundle.mjs';
 import {prepare,drawGarment,resetSmooth} from './lib/engine.js';
 import {Garment3D} from './lib/engine3d.js';
-let g3=null,use3=true;window.t3=b=>{use3=!use3;b.textContent=use3?'3D: شغال':'3D: مقفول'};
+let g3=null,use3=false;window.t3=b=>{use3=!use3;b.textContent=use3?'3D: شغال':'3D: مقفول'};
 const COLORS={أسود:'#16161a',أبيض:'#f1f1f1',رمادي:'#7b7f86',كحلي:'#1c2c52',أحمر:'#b3202a',بيج:'#c9b08a'};
 const P=[
 {id:'tee1',t:'tee',n:'تيشيرت كلاسيك',p:350,c:'أبيض'},{id:'tee2',t:'tee',n:'تيشيرت أوفرسايز',p:420,c:'أسود'},
@@ -73,7 +73,7 @@ let lm=null,stream=null,cur=null,run=false,img=null,lastPts=null;
 const ctx=c.getContext('2d');
 async function initModel(){if(lm)return;msg.textContent='جاري تحميل الموديل...';
 const f=await FilesetResolver.forVisionTasks('./wasm');
-lm=await PoseLandmarker.createFromOptions(f,{baseOptions:{modelAssetPath:'./lib/pose.task'},runningMode:'VIDEO',numPoses:1});}
+const mk=d=>PoseLandmarker.createFromOptions(f,{baseOptions:{modelAssetPath:'./lib/pose.task',delegate:d},runningMode:'VIDEO',numPoses:1});try{lm=await mk('GPU')}catch(e){lm=await mk('CPU')}}
 window.openTry=async i=>{cur=P.find(x=>x.id==i);tm.classList.add('show');tn.textContent=cur.n;
 tcol.innerHTML=photo[i]?'':Object.keys(COLORS).map(k=>`<button class="dot" style="background:${COLORS[k]}" onclick="tc('${k}')"></button>`).join('');loadImg();
 try{await initModel();msg.textContent='جاري فتح الكاميرا...';stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:720,height:960},audio:false});
