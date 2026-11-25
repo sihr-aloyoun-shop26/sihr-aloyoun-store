@@ -101,7 +101,7 @@ async function notify(o, items) {
   if (!TG_TOKEN || !TG_CHAT) return 'not-configured';
   const text = '🛍 طلب جديد - سحر العيون\nرقم: ' + o.num + '\nالاسم: ' + o.name + '\nالموبايل: ' + o.phone +
     '\nالمحافظة: ' + o.gov + '\nالعنوان: ' + o.addr + '\nالدفع: ' + o.pay + '\n' +
-    items.map(i => '- ' + i.name + ' x' + i.qty).join('\n') + '\nالإجمالي: ' + o.total + ' ج.م' + (o.notes ? '\nملاحظات: ' + o.notes : '');
+    items.map(i => '- ' + i.name + ' x' + i.qty).join('\n') + '\n' + (o.discount ? 'خصم (' + o.code + '): ' + o.discount + ' ج.م\n' : '') + (o.shipping ? 'شحن: ' + o.shipping + ' ج.م\n' : '') + 'الإجمالي: ' + o.total + ' ج.م' + (o.notes ? '\nملاحظات: ' + o.notes : '');
   try {
     const r = await fetch('https://api.telegram.org/bot' + TG_TOKEN + '/sendMessage', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -112,11 +112,33 @@ async function notify(o, items) {
   } catch (e) { console.error('Telegram failed', e.message); return 'failed'; }
 }
 
+function priceOrder(S, subtotal, codeStr) {
+  let discount = 0, code = '';
+  const c = (S.codes || []).find(x => x.active !== false && x.code === String(codeStr || '').toUpperCase().replace(/\s/g, ''));
+  if (c) { code = c.code; discount = c.type === 'fixed' ? Math.min(c.value, subtotal) : Math.round(subtotal * Math.min(c.value, 100) / 100); }
+  const after = subtotal - discount;
+  const shipping = (S.shippingFee > 0 && !(S.freeShipFrom > 0 && after >= S.freeShipFrom)) ? S.shippingFee : 0;
+  return { subtotal, discount, shipping, total: after + shipping, code, valid: !!c };
+}
+const publicSettings = S => { const o = Object.assign({}, S); delete o.codes; return o; };
+const sha = (pw, salt) => crypto.scryptSync(pw, salt, 32).toString('hex');
+async function passwordOk(pw) {
+  const a = await kvGet('admin', null);
+  if (a && a.salt) { const x = Buffer.from(sha(pw, a.salt)), y = Buffer.from(a.hash); return x.length === y.length && crypto.timingSafeEqual(x, y); }
+  const p = Buffer.from(pw), q = Buffer.from(ADMIN_PASSWORD);
+  return !!ADMIN_PASSWORD && p.length === q.length && crypto.timingSafeEqual(p, q);
+}
+
 function sanitizeSettings(b) {
   const s = {};
   for (const k of ['brandName', 'brandSub', 'heroEyebrow', 'heroTitle1', 'heroTitle2', 'collectionEyebrow', 'collectionTitle',
     'aboutTitle1', 'aboutTitle2', 'reviewsTitle', 'footerText', 'copyright']) if (b[k] !== undefined) s[k] = clean(b[k], 120);
   for (const k of ['colorGold', 'colorGoldLight', 'colorBg', 'colorCard', 'colorText']) if (b[k] !== undefined) { if (!/^#[0-9a-fA-F]{6}$/.test(b[k])) throw new Error('لون غير صالح'); s[k] = b[k]; }
+  for (const k of ['contactPhone', 'whatsapp', 'contactEmail', 'contactAddress', 'instagram', 'facebook', 'tiktok', 'closedMessage', 'transferInfo', 'announcement']) if (b[k] !== undefined) s[k] = clean(b[k], 200);
+  for (const k of ['shippingFee', 'freeShipFrom']) if (b[k] !== undefined) { const n = Number(b[k]); if (!(n >= 0 && n < 1e6)) throw new Error('رقم غير صالح'); s[k] = n; }
+  for (const k of ['storeOpen', 'payCash', 'payTransfer']) if (b[k] !== undefined) s[k] = !!b[k];
+  if (Array.isArray(b.codes)) s.codes = b.codes.slice(0, 50).map(c => ({ code: clean(c.code, 30).toUpperCase().replace(/\s/g, ''), type: c.type === 'fixed' ? 'fixed' : 'percent', value: Math.max(0, Number(c.value) || 0), active: c.active !== false })).filter(c => c.code && c.value > 0);
+  if (Array.isArray(b.sectionOrder)) { const ok = ['collection', 'about', 'reviews']; s.sectionOrder = b.sectionOrder.filter(x => ok.includes(x)); for (const x of ok) if (!s.sectionOrder.includes(x)) s.sectionOrder.push(x); }
   for (const k of ['showAbout', 'showReviews']) if (b[k] !== undefined) s[k] = !!b[k];
   if (b.heroSub !== undefined) s.heroSub = cleanLong(b.heroSub, 400);
   if (b.aboutText !== undefined) s.aboutText = cleanLong(b.aboutText, 1200);
@@ -126,6 +148,7 @@ function sanitizeSettings(b) {
   return s;
 }
 
+const CASH = 'الدفع عند الاستلام';
 const MIME = { '.html': 'text/html; charset=utf-8' };
 const PAGES = { '/': 'index.html', '/index.html': 'index.html', '/admin': 'admin.html', '/admin.html': 'admin.html' };
 
@@ -134,9 +157,22 @@ http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://x'), p = url.pathname;
     const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 
-    if (p === '/api/site' && req.method === 'GET') return send(res, 200, { settings: await getSettings(), products: await getProducts() });
+    if (p === '/api/site' && req.method === 'GET') return send(res, 200, { settings: publicSettings(await getSettings()), products: await getProducts() });
     if (p === '/api/products' && req.method === 'GET') return send(res, 200, await getProducts());
 
+    if (p === '/api/validate-code' && req.method === 'POST') {
+      if (limited('vc' + ip, 60)) return send(res, 429, { error: 'محاولات كتير' });
+      const b = await body(req); const S = await getSettings(), prods = await getProducts(); let sub = 0;
+      for (const [id, q] of Object.entries(b.items || {})) { const pr = prods.find(x => String(x.id) === String(id)); if (pr) sub += pr.price * Math.max(0, Math.min(20, Math.floor(Number(q)) || 0)); }
+      return send(res, 200, priceOrder(S, sub, b.code));
+    }
+    if (p === '/api/track' && req.method === 'POST') {
+      if (limited('tr' + ip, 30)) return send(res, 429, { error: 'محاولات كتير' });
+      const b = await body(req); const num = clean(b.num, 20).toUpperCase(), ph = clean(b.phone, 20).replace(/\s/g, '');
+      const o = (await ordersAll()).find(x => x.num === num);
+      if (!o || !ph || o.phone.slice(-4) !== ph.slice(-4)) return send(res, 404, { error: 'مفيش طلب بالبيانات دي' });
+      return send(res, 200, { num: o.num, status: o.status, at: o.at, total: o.total, items: o.items.map(i => ({ name: i.name, qty: i.qty })) });
+    }
     if (p === '/api/orders' && req.method === 'POST') {
       if (limited(ip)) return send(res, 429, { error: 'طلبات كتير، حاول بعد شوية' });
       const b = await body(req);
@@ -144,6 +180,9 @@ http.createServer(async (req, res) => {
         addr = clean(b.addr, 300), notes = clean(b.notes, 300), pay = clean(b.pay, 60);
       if (!name || !gov || !addr) return send(res, 400, { error: 'بيانات ناقصة' });
       if (!/^01[0-9]{9}$/.test(phone)) return send(res, 400, { error: 'رقم الموبايل غير صحيح' });
+      const S = await getSettings();
+      if (S.storeOpen === false) return send(res, 400, { error: S.closedMessage || 'المتجر مغلق حالياً' });
+      if ((pay !== CASH && !S.payTransfer) || (pay === CASH && S.payCash === false)) return send(res, 400, { error: 'طريقة الدفع غير متاحة' });
       const prods = await getProducts(), items = []; let total = 0;
       for (const [id, q] of Object.entries(b.items || {})) {
         const pr = prods.find(x => String(x.id) === String(id)); const qty = Math.floor(Number(q));
@@ -151,8 +190,9 @@ http.createServer(async (req, res) => {
         items.push({ id: pr.id, name: pr.name, price: pr.price, qty }); total += pr.price * qty;
       }
       if (!items.length) return send(res, 400, { error: 'السلة فاضية' });
+      const pr2 = priceOrder(S, total, b.code); total = pr2.total;
       const num = 'SO-' + (100000 + crypto.randomInt(900000));
-      const o = { num, at: new Date().toISOString(), name, phone, gov, addr, pay, notes, items, total, status: 'new' };
+      const o = { num, at: new Date().toISOString(), name, phone, gov, addr, pay, notes, items, total, subtotal: pr2.subtotal, discount: pr2.discount, shipping: pr2.shipping, code: pr2.code, status: 'new' };
       await orderAdd(o);
       notify(o, items);
       return send(res, 200, { ok: true, num });
@@ -161,8 +201,7 @@ http.createServer(async (req, res) => {
     if (p === '/api/admin/login' && req.method === 'POST') {
       if (limited('login' + ip, 15)) return send(res, 429, { error: 'محاولات كتير' });
       const b = await body(req);
-      const a = Buffer.from(String(b.password || '')), c = Buffer.from(ADMIN_PASSWORD);
-      if (ADMIN_PASSWORD && a.length === c.length && crypto.timingSafeEqual(a, c))
+      if (await passwordOk(String(b.password || '')))
         return send(res, 200, { ok: true }, { 'Set-Cookie': 'adm=' + makeToken() + '; HttpOnly; SameSite=Strict; Path=/; Max-Age=604800' + (req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '') });
       return send(res, 401, { error: 'كلمة السر غلط' });
     }
@@ -180,8 +219,16 @@ http.createServer(async (req, res) => {
         if (!['new', 'confirmed', 'shipped', 'delivered', 'canceled'].includes(b.status)) return send(res, 400, { error: 'خطأ' });
         return (await orderSetStatus(b.num, b.status)) ? send(res, 200, { ok: true }) : send(res, 400, { error: 'الطلب مش موجود' });
       }
+      if (p === '/api/admin/password' && req.method === 'POST') {
+        const b = await body(req);
+        if (!(await passwordOk(String(b.current || '')))) return send(res, 400, { error: 'كلمة السر الحالية غلط' });
+        const np = String(b.next || ''); if (np.length < 8) return send(res, 400, { error: 'كلمة السر الجديدة لازم 8 حروف على الأقل' });
+        const salt = crypto.randomBytes(16).toString('hex'); await kvSet('admin', { salt, hash: sha(np, salt) });
+        return send(res, 200, { ok: true });
+      }
+      if (p === '/api/admin/settings' && req.method === 'GET') return send(res, 200, await getSettings());
       if (p === '/api/admin/backup' && req.method === 'GET') {
-        return send(res, 200, { exportedAt: new Date().toISOString(), settings: await getSettings(), products: await getProducts(), orders: await ordersAll() },
+        return send(res, 200, { exportedAt: new Date().toISOString(), settings: await getSettings(), products: await getProducts(), admin: undefined, orders: await ordersAll() },
           { 'Content-Disposition': 'attachment; filename="sihr-aloyoun-backup.json"' });
       }
       if (p === '/api/admin/settings' && req.method === 'POST') {
@@ -197,6 +244,7 @@ http.createServer(async (req, res) => {
         if (!x) { x = { id: prods.reduce((m, q) => Math.max(m, q.id), 0) + 1, c1: '#c9a24b', c2: '#5b3a1a', stock: true, tag: null, old: null }; prods.push(x); }
         if (b.name !== undefined) { x.name = clean(b.name, 60); if (!x.name) return send(res, 400, { error: 'الاسم مطلوب' }); }
         if (b.notes !== undefined) x.notes = clean(b.notes, 200);
+        if (b.cat !== undefined) x.cat = clean(b.cat, 30);
         if (b.tag !== undefined) x.tag = clean(b.tag, 20) || null;
         if (b.price !== undefined) { const n = Number(b.price); if (!(n > 0 && n < 1e6)) return send(res, 400, { error: 'سعر غلط' }); x.price = n; }
         if (b.old !== undefined) x.old = b.old ? Number(b.old) : null;
