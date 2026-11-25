@@ -193,6 +193,28 @@ const CASH = 'الدفع عند الاستلام';
 const MIME = { '.html': 'text/html; charset=utf-8' };
 const PAGES = { '/': 'index.html', '/index.html': 'index.html', '/admin': 'admin.html', '/admin.html': 'admin.html' };
 
+
+// Decart live try-on: daily caps (all visitors / per visitor), reset each UTC day
+let decartDay = '', decartUsed = 0; const decartPerIp = new Map();
+function decartAllow(ip) {
+  const d = new Date().toISOString().slice(0, 10);
+  if (d !== decartDay) { decartDay = d; decartUsed = 0; decartPerIp.clear(); }
+  if (decartUsed >= parseInt(process.env.DECART_MAX_PER_DAY || '5', 10)) return false;
+  const n = decartPerIp.get(ip) || 0; if (n >= 3) return false;
+  decartPerIp.set(ip, n + 1); decartUsed++; return true;
+}
+// The 1.1 MB Decart SDK bundle is stored in the repo as base64 parts; assembled and SHA-256 checked at first use
+const DECART_SHA = '9d7cb6f974b6157311eb8939134bfe4f555e734e73976549b41b9279320f6ceb';
+let decartBuf = null;
+function decartBundle() {
+  if (decartBuf) return decartBuf;
+  const dir = path.join(__dirname, 'bingo', 'lib'); let b64 = '';
+  for (let i = 1; ; i++) { const f = path.join(dir, 'decart.b64.' + i + '.txt'); if (!fs.existsSync(f)) break; b64 += fs.readFileSync(f, 'utf8').replace(/\s+/g, ''); }
+  const b = Buffer.from(b64, 'base64');
+  if (crypto.createHash('sha256').update(b).digest('hex') !== DECART_SHA) return null;
+  return (decartBuf = b);
+}
+
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x'), p = url.pathname;
@@ -301,6 +323,18 @@ http.createServer(async (req, res) => {
       return send(res, 404, { error: 'not found' });
     }
 
+    if (p === '/api/decart-status' && req.method === 'GET') return send(res, 200, { enabled: !!process.env.DECART_API_KEY && process.env.DECART_DISABLED !== '1' });
+    if (p === '/api/decart-token' && req.method === 'POST') {
+      if (!process.env.DECART_API_KEY || process.env.DECART_DISABLED === '1') return send(res, 503, { error: 'disabled' });
+      if (!decartAllow(ip)) return send(res, 429, { error: 'تم الوصول لحد التجارب اليوم' });
+      const r = await fetch('https://api.decart.ai/v1/client/tokens', {
+        method: 'POST',
+        headers: { 'X-API-KEY': process.env.DECART_API_KEY, 'content-type': 'application/json' },
+        body: JSON.stringify({ expiresIn: 60, allowedModels: ['lucy-vton-latest'], allowedOrigins: ['https://sihr-aloyoun.onrender.com'], constraints: { realtime: { maxSessionDuration: 30 } } })
+      });
+      if (!r.ok) return send(res, 502, { error: 'token failed ' + r.status });
+      return send(res, 200, await r.json());
+    }
     if (p === '/tryon' || p === '/bingo') { res.writeHead(301, { Location: p + '/' }); return res.end(); }
     const appM = /^\/(tryon|bingo)\/(.*)$/.exec(p);
     if (appM) {
@@ -308,6 +342,7 @@ http.createServer(async (req, res) => {
       const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
       let buf = null;
       if (APPS[app][rel]) buf = await tryonAsset(app, rel);
+      else if (app === 'bingo' && rel === 'lib/decart.bundle.js') buf = decartBundle();
       else {
         const root = path.join(__dirname, app), fp = path.normalize(path.join(root, rel));
         if (fp.startsWith(root + path.sep) && /\.(html|js)$/.test(fp) && fs.existsSync(fp) && fs.statSync(fp).isFile()) buf = fs.readFileSync(fp);
