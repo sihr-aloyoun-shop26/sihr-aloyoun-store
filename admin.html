@@ -20,7 +20,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border:1px solid 
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ST={new:'جديد',confirmed:'مؤكد',shipped:'اتشحن',delivered:'اتسلم',canceled:'ملغي'};
-async function api(u,b){const r=await fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{});const d=await r.json().catch(()=>({}));if(r.status===401&&u!=='/api/admin/login'){login();throw 0}return{ok:r.ok,d}}
+async function api(u,b){let r;try{r=await fetch(u,b?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)}:{})}catch(e){alert('مشكلة في الاتصال، جرّب تاني');throw e}const d=await r.json().catch(()=>({error:r.status===413?'الصورة كبيرة قوي':'خطأ '+r.status}));if(r.status===401&&u!=='/api/admin/login'){login();throw 0}return{ok:r.ok,d}}
 function login(msg){$('#app').innerHTML='<h1>لوحة التحكم</h1><div class="card"><input id="pw" type="password" placeholder="كلمة السر" style="width:70%"> <button onclick="doLogin()">دخول</button><p class="bad">'+(msg||'')+'</p></div>';$('#pw').onkeydown=e=>{if(e.key==='Enter')doLogin()}}
 async function doLogin(){const{ok,d}=await api('/api/admin/login',{password:$('#pw').value});ok?home():login(esc(d.error||'خطأ'))}
 let tab='orders';
@@ -44,13 +44,18 @@ async function orders(){
 async function setSt(num,status){await api('/api/admin/status',{num,status});orders()}
 
 /* ---- الصور ---- */
-function pickImage(input,max,cb){
+function pickImage(input,max,cb,keepAlpha){
   const f=input.files[0];if(!f)return;
   const img=new Image(),u=URL.createObjectURL(f);
-  img.onload=()=>{const k=Math.min(1,max/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
-    const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);
-    cb(c.toDataURL('image/jpeg',.82));URL.revokeObjectURL(u)};
-  img.onerror=()=>alert('الملف ده مش صورة');img.src=u;
+  img.onload=()=>{const k=Math.min(1,max/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.max(1,Math.round(img.width*k));c.height=Math.max(1,Math.round(img.height*k));
+    const x=c.getContext('2d');
+    const png=keepAlpha&&/png|webp|svg/i.test(f.type);
+    if(!png){x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height)}
+    x.drawImage(img,0,0,c.width,c.height);
+    let out=png?c.toDataURL('image/png'):c.toDataURL('image/jpeg',.85);
+    if(out.length>600000){out=c.toDataURL('image/jpeg',.7)}
+    URL.revokeObjectURL(u);input.value='';cb(out)};
+  img.onerror=()=>alert('الملف ده مش صورة مدعومة، جرّب JPG أو PNG');img.src=u;
 }
 
 /* ---- المنتجات ---- */
@@ -87,7 +92,7 @@ const TXT=[['brandName','اسم البراند (بجانب اللوجو لو م�
 const CLR=[['colorGold','لون الذهبي (الرئيسي)'],['colorGoldLight','الذهبي الفاتح'],['colorBg','لون الخلفية'],['colorCard','لون الكروت'],['colorText','لون الكتابة']];
 async function site(){
   S=(await api('/api/admin/settings')).d;LOGO=null;
-  $('#c').innerHTML='<h2>اللوجو والنصوص</h2><div class="card"><h3>اللوجو</h3><div id="lg"></div><input type="file" accept="image/*" onchange="pickImage(this,400,u=>{LOGO=u;lgShow(u)})"> <button class="sec" onclick="LOGO=\'\';lgShow(\'\')">إزالة اللوجو (يرجع الاسم)</button></div>'+
+  $('#c').innerHTML='<h2>اللوجو والنصوص</h2><div class="card"><h3>اللوجو</h3><div id="lg"></div><input type="file" accept="image/*" onchange="pickImage(this,500,u=>{LOGO=u;lgShow(u);saveLogo(u)},true)"> <button class="sec" onclick="saveLogo(\'\')">إزالة اللوجو (يرجع الاسم)</button></div>'+
   '<div class="card"><h3>النصوص</h3>'+TXT.map(([k,l])=>'<label>'+l+'</label><input type="text" id="s_'+k+'" value="'+esc(S[k])+'">').join('')+
   '<label>الجملة تحت العنوان الرئيسي</label><textarea id="s_heroSub">'+esc(S.heroSub)+'</textarea><label>حكاية البراند</label><textarea id="s_aboutText">'+esc(S.aboutText)+'</textarea></div>'+
   '<div class="card"><h3>حالة المتجر والإعلان</h3><label><input type="checkbox" id="s_storeOpen"'+(S.storeOpen!==false?' checked':'')+'> المتجر مفتوح (لو شلتها العملاء مش هيقدروا يطلبوا)</label><label>رسالة وقت الإغلاق</label><input type="text" id="s_closedMessage" value="'+esc(S.closedMessage)+'"><label>شريط إعلان أعلى الموقع (اتركه فاضي لإخفائه)</label><input type="text" id="s_announcement" value="'+esc(S.announcement)+'"></div>'+
@@ -115,6 +120,7 @@ function _unused(){return ''+S.features.map((f,i)=>'<div class="row"><div><label
   lgShow(S.logoImage||'');
 }
 async function chPw(){const{ok,d}=await api('/api/admin/password',{current:$('#pwc').value,next:$('#pwn').value});alert(ok?'تم تغيير كلمة السر ✓ (احفظها كويس)':(d.error||'خطأ'));if(ok){$('#pwc').value='';$('#pwn').value=''}}
+async function saveLogo(u){const{ok,d}=await api('/api/admin/settings',{logoImage:u});if(ok){LOGO=null;S.logoImage=u;lgShow(u);alert(u?'تم حفظ اللوجو ✓ وظهر في الموقع':'تم إزالة اللوجو')}else alert(d.error||'خطأ في الحفظ')}
 function lgShow(u){$('#lg').innerHTML=u?'<img class="pv" style="max-height:80px;background:#000" src="'+u+'">':'<p class="muted">مفيش لوجو صورة حالياً، بيظهر الاسم كنص.</p>'}
 async function saveSite(){
   collect();const b={};
