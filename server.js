@@ -151,6 +151,34 @@ function sanitizeSettings(b) {
   return s;
 }
 
+
+/* ---- صفحة تجربة اللبس: الملفات الكبيرة بتتحمّل مرة واحدة من المصدر الرسمي وبتتأكد بالبصمة ---- */
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/';
+const TRYON_ASSETS = {
+  'lib/vision_bundle.mjs': [MP + 'vision_bundle.mjs', 'fb0c02c296f44ce0cc324ba16bd646d8773eb4a7847db4019cc4d0430db7a9b5'],
+  'wasm/vision_wasm_internal.js': [MP + 'wasm/vision_wasm_internal.js', '2aa5fd3fdd3d8208cd7587df0bb19fb6925c4ea16a76dd025aedc1f64d6a6309'],
+  'wasm/vision_wasm_internal.wasm': [MP + 'wasm/vision_wasm_internal.wasm', '225bc06c0f51a9cf31fea0e9e0b0243e9e01fb5ef332cc1a7fa6656dbdfdaabf'],
+  'lib/pose.task': ['https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task', '59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a']
+};
+const tryonMem = {}, tryonBusy = {};
+function tryonAsset(rel) {
+  if (tryonMem[rel]) return Promise.resolve(tryonMem[rel]);
+  if (tryonBusy[rel]) return tryonBusy[rel];
+  const [url, hash] = TRYON_ASSETS[rel], cf = path.join(DATA_DIR, 'tryon-' + hash.slice(0, 16));
+  return (tryonBusy[rel] = (async () => {
+    try {
+      let b = null;
+      try { b = fs.readFileSync(cf); } catch (e) {}
+      if (!b || crypto.createHash('sha256').update(b).digest('hex') !== hash) {
+        const r = await fetch(url); if (!r.ok) throw new Error('upstream ' + r.status);
+        b = Buffer.from(await r.arrayBuffer());
+        if (crypto.createHash('sha256').update(b).digest('hex') !== hash) throw new Error('hash mismatch ' + rel);
+        try { fs.writeFileSync(cf, b); } catch (e) {}
+      }
+      tryonMem[rel] = b; return b;
+    } finally { delete tryonBusy[rel]; }
+  })());
+}
 const CASH = 'الدفع عند الاستلام';
 const MIME = { '.html': 'text/html; charset=utf-8' };
 const PAGES = { '/': 'index.html', '/index.html': 'index.html', '/admin': 'admin.html', '/admin.html': 'admin.html' };
@@ -263,6 +291,18 @@ http.createServer(async (req, res) => {
       return send(res, 404, { error: 'not found' });
     }
 
+    if (p === '/tryon') { res.writeHead(301, { Location: '/tryon/' }); return res.end(); }
+    if (p.startsWith('/tryon/')) {
+      const rel = decodeURIComponent(p.slice(7)) || 'index.html';
+      const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.wasm': 'application/wasm', '.task': 'application/octet-stream' };
+      let buf = null;
+      if (TRYON_ASSETS[rel]) buf = await tryonAsset(rel);
+      else if (rel === 'index.html') buf = fs.readFileSync(path.join(__dirname, 'tryon', 'index.html'));
+      if (!buf) { res.writeHead(404); return res.end('Not found'); }
+      const ext = path.extname(rel).toLowerCase();
+      res.writeHead(200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Content-Length': buf.length, 'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400' });
+      return res.end(buf);
+    }
     const page = PAGES[p];
     if (!page) { res.writeHead(404); return res.end('Not found'); }
     res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
