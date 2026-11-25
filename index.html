@@ -183,6 +183,7 @@ footer .logo{margin-bottom:8px}
 </head>
 <body>
 
+<div id="announce" style="display:none;background:var(--gold);color:#111;text-align:center;padding:8px;font-weight:700;position:relative;z-index:101"></div>
 <nav>
   <div class="logo" data-logo></div>
   <ul class="nav-links">
@@ -190,6 +191,7 @@ footer .logo{margin-bottom:8px}
     <li><a href="#collection">المجموعة</a></li>
     <li><a href="#about">عن البراند</a></li>
     <li><a href="#reviews">آراء العملاء</a></li>
+    <li><a href="#" onclick="openTrack();return false">تتبع طلبك</a></li>
   </ul>
   <button class="cart-btn" onclick="toggleCart(true)">🛒 السلة <span class="cart-count" id="cartCount">0</span></button>
 </nav>
@@ -215,6 +217,7 @@ footer .logo{margin-bottom:8px}
     <h2 id="collectionTitle">عطورنا المميزة</h2>
     <div class="divider"></div>
   </div>
+  <div id="filters" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin:0 auto 24px;max-width:900px;padding:0 16px"><input id="searchBox" type="search" placeholder="🔍 ابحث عن عطر..." oninput="renderProducts()" style="flex:1;min-width:200px;padding:11px 16px;border-radius:30px;border:1px solid rgba(201,162,75,.4);background:var(--dark2);color:var(--cream);font:inherit"><div id="catChips" style="display:flex;gap:8px;flex-wrap:wrap"></div></div>
   <div class="grid" id="productGrid"></div>
 </section>
 
@@ -242,6 +245,7 @@ footer .logo{margin-bottom:8px}
 <footer>
   <div class="logo" data-logo></div>
   <p id="footerText">عطور شرقية فاخرة · صنع بحب في مصر</p>
+  <div id="footerLinks" style="margin:14px 0;display:flex;gap:16px;flex-wrap:wrap;justify-content:center"></div>
   <p id="copyright" style="margin-top:8px;font-size:.85rem">© 2026 سحر العيون — جميع الحقوق محفوظة</p>
 </footer>
 
@@ -254,7 +258,8 @@ footer .logo{margin-bottom:8px}
   </div>
   <div class="drawer-body" id="cartBody"></div>
   <div class="drawer-foot">
-    <div class="total-row"><span>الإجمالي</span><span id="cartTotal">0 ج.م</span></div>
+    <div class="total-row"><span>المجموع الفرعي</span><span id="cartTotal">0 ج.م</span></div>
+    <div id="shipNote" style="font-size:.85rem;color:var(--muted);margin:6px 0"></div>
     <button class="checkout-btn" onclick="openCheckout()">إتمام الطلب</button>
   </div>
 </aside>
@@ -280,12 +285,9 @@ footer .logo{margin-bottom:8px}
         </select>
       </div>
       <div class="field"><label>العنوان بالتفصيل *</label><textarea id="fAddr" placeholder="الشارع، رقم العمارة، الدور، علامة مميزة"></textarea></div>
+      <div class="field"><label>كود الخصم (اختياري)</label><div style="display:flex;gap:8px"><input id="fCode" type="text" placeholder="اكتب الكود" style="flex:1"><button class="add-btn" style="width:auto;padding:0 18px" onclick="applyCode()">تطبيق</button></div><div id="codeMsg" style="font-size:.85rem;margin-top:4px"></div></div>
       <div class="field"><label>طريقة الدفع</label>
-        <select id="fPay">
-          <option>الدفع عند الاستلام</option>
-          <option>فودافون كاش</option>
-          <option>انستاباي</option>
-        </select>
+        <select id="fPay" onchange="payInfo()"></select><div id="payNote" style="font-size:.85rem;color:var(--gold-light);margin-top:6px"></div>
       </div>
       <div class="field"><label>ملاحظات (اختياري)</label><input id="fNotes" type="text" placeholder="أي تفاصيل إضافية"></div>
       <button class="checkout-btn" onclick="placeOrder()">تأكيد الطلب ✅</button>
@@ -303,10 +305,15 @@ footer .logo{margin-bottom:8px}
   </div>
 </div>
 
+<div class="modal" id="trackModal"><div class="modal-box"><h3>تتبع طلبك</h3>
+  <div class="field"><label>رقم الطلب</label><input id="tNum" type="text" placeholder="SO-123456"></div>
+  <div class="field"><label>رقم الموبايل المستخدم في الطلب</label><input id="tPhone" type="tel" placeholder="01xxxxxxxxx"></div>
+  <button class="checkout-btn" onclick="doTrack()">تتبع</button><div id="tRes" style="margin-top:14px;line-height:1.9"></div>
+  <button class="add-btn" style="margin-top:10px" onclick="document.getElementById('trackModal').classList.remove('open')">إغلاق</button></div></div>
 <div class="toast" id="toast">تمت الإضافة للسلة ✓</div>
 
 <script>
-let PRODUCTS=[];
+let PRODUCTS=[],SET={},CAT='';
 
 let cart=JSON.parse(localStorage.getItem('so_cart')||'{}');
 
@@ -316,7 +323,12 @@ function saveCart(){localStorage.setItem('so_cart',JSON.stringify(cart))}
 /* Render products */
 const grid=document.getElementById('productGrid');
 function renderProducts(){grid.innerHTML='';
-PRODUCTS.forEach(p=>{
+const q=(document.getElementById('searchBox')||{value:''}).value.trim().toLowerCase();
+const cats=[...new Set(PRODUCTS.map(p=>p.cat).filter(Boolean))];
+document.getElementById('catChips').innerHTML=cats.length?['',...cats].map(c=>`<button class="add-btn" style="width:auto;padding:8px 16px;${CAT===c?'background:var(--gold);color:#111':''}" onclick="CAT='${esc(c).replace(/'/g,'')}';renderProducts()">${c?esc(c):'الكل'}</button>`).join(''):'';
+const list=PRODUCTS.filter(p=>(!CAT||p.cat===CAT)&&(!q||(p.name+' '+(p.notes||'')+' '+(p.cat||'')).toLowerCase().includes(q)));
+if(!list.length)grid.innerHTML='<p style="text-align:center;grid-column:1/-1;color:var(--muted)">مفيش نتائج مطابقة</p>';
+list.forEach(p=>{
   const card=document.createElement('div');card.className='card';
   card.innerHTML=`
     ${p.tag?`<div class="tag">${esc(p.tag)}</div>`:''}
@@ -353,6 +365,7 @@ function cartTotal(){return Object.entries(cart).reduce((s,[id,q])=>{const p=PRO
 function renderCart(){
   document.getElementById('cartCount').textContent=cartCount();
   document.getElementById('cartTotal').textContent=fmt(cartTotal());
+  {const f=SET.freeShipFrom,fee=SET.shippingFee;document.getElementById('shipNote').textContent=fee>0?(f>0?`الشحن ${fmt(fee)}، ومجاني للطلبات من ${fmt(f)}`:`الشحن ${fmt(fee)}`):'';}
   const body=document.getElementById('cartBody');
   const ids=Object.keys(cart);
   if(!ids.length){body.innerHTML='<div class="empty-cart">سلتك فاضية 🌙<br>اختار عطرك من المجموعة</div>';return}
@@ -380,8 +393,29 @@ function openCheckout(){
     Object.entries(cart).map(([id,q])=>{
       const p=PRODUCTS.find(x=>x.id==id);
       return `<div class="line"><span>${p.name} × ${q}</span><span>${fmt(p.price*q)}</span></div>`;
-    }).join('')+`<div class="grand"><span>الإجمالي</span><span>${fmt(cartTotal())}</span></div>`;
+    }).join('')+'<div id="priceBox"></div>';
+  document.getElementById('fCode').value='';document.getElementById('codeMsg').textContent='';
+  const sel=document.getElementById('fPay'),o=[];
+  if(SET.payCash!==false)o.push('<option value="الدفع عند الاستلام">الدفع عند الاستلام</option>');
+  if(SET.payTransfer)o.push('<option value="تحويل (فودافون كاش / انستاباي)">تحويل (فودافون كاش / انستاباي)</option>');
+  sel.innerHTML=o.join('');payInfo();
+  refreshPrice();
   document.getElementById('checkoutModal').classList.add('open');
+}
+function payInfo(){document.getElementById('payNote').textContent=document.getElementById('fPay').value.startsWith('تحويل')?(SET.transferInfo||''):''}
+let PRICE=null;
+async function refreshPrice(){
+  try{const r=await fetch('/api/validate-code',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:cart,code:document.getElementById('fCode').value})});PRICE=await r.json();}catch(e){return}
+  document.getElementById('priceBox').innerHTML=`<div class="line"><span>المجموع الفرعي</span><span>${fmt(PRICE.subtotal)}</span></div>`+(PRICE.discount?`<div class="line"><span>خصم (${esc(PRICE.code)})</span><span>-${fmt(PRICE.discount)}</span></div>`:'')+`<div class="line"><span>الشحن</span><span>${PRICE.shipping?fmt(PRICE.shipping):'مجاني'}</span></div><div class="grand"><span>الإجمالي</span><span>${fmt(PRICE.total)}</span></div>`;
+}
+async function applyCode(){await refreshPrice();const m=document.getElementById('codeMsg'),c=document.getElementById('fCode').value.trim();m.textContent=!c?'':PRICE&&PRICE.valid?'تم تطبيق الكود ✓':'الكود غير صحيح';m.style.color=PRICE&&PRICE.valid?'#8fd48f':'#ff9a9a'}
+function openTrack(){document.getElementById('trackModal').classList.add('open')}
+async function doTrack(){
+  const r=await fetch('/api/track',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({num:document.getElementById('tNum').value,phone:document.getElementById('tPhone').value})});
+  const d=await r.json(),el=document.getElementById('tRes');
+  if(!r.ok){el.textContent=d.error||'حصل خطأ';return}
+  const ST={new:'تم استلام طلبك',confirmed:'تم تأكيد طلبك',shipped:'طلبك في الطريق إليك 🚚',delivered:'تم تسليم الطلب ✓',canceled:'تم إلغاء الطلب'};
+  el.innerHTML='<b>'+esc(ST[d.status]||d.status)+'</b><br>'+d.items.map(i=>esc(i.name)+' ×'+i.qty).join('<br>')+'<br>الإجمالي: '+fmt(d.total);
 }
 function closeCheckout(){document.getElementById('checkoutModal').classList.remove('open');toggleCart(true)}
 
@@ -392,12 +426,13 @@ async function placeOrder(){
   const phone=document.getElementById('fPhone').value.trim();
   const gov=document.getElementById('fGov').value;
   const addr=document.getElementById('fAddr').value.trim();
+  if(SET.storeOpen===false){alert(SET.closedMessage||'المتجر مغلق حالياً');return}
   if(!name||!phone||!gov||!addr){alert('من فضلك أكمل البيانات المطلوبة (*)');return}
   if(!/^01[0-9]{9}$/.test(phone.replace(/\s/g,''))){alert('رقم الموبايل غير صحيح، اكتب 11 رقم يبدأ بـ 01');return}
   placing=true;
   try{
     const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,phone,gov,addr,pay:document.getElementById('fPay').value,notes:document.getElementById('fNotes').value,items:cart})});
+      body:JSON.stringify({name,phone,gov,addr,pay:document.getElementById('fPay').value,code:document.getElementById('fCode').value,notes:document.getElementById('fNotes').value,items:cart})});
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||'حصل خطأ');
     document.getElementById('orderNum').textContent='رقم الطلب: '+d.num;
@@ -419,6 +454,17 @@ function applySettings(S){
   document.getElementById('aboutTitle').innerHTML=esc(S.aboutTitle1)+' <span style="color:var(--gold)">'+esc(S.aboutTitle2)+'</span>';
   document.getElementById('featuresBox').innerHTML=(S.features||[]).map(f=>`<div class="feature"><div class="ico">${esc(f.ico)}</div><div><b>${esc(f.title)}</b><span>${esc(f.desc)}</span></div></div>`).join('');
   document.getElementById('reviewsBox').innerHTML=(S.reviews||[]).map(r=>`<div class="review"><div class="stars">${'★'.repeat(r.stars)}${'☆'.repeat(5-r.stars)}</div><p>"${esc(r.text)}"</p><b>— ${esc(r.name)}</b></div>`).join('');
+  SET=S;
+  const an=document.getElementById('announce');an.textContent=S.announcement||'';an.style.display=S.announcement?'block':'none';
+  if(S.storeOpen===false){an.textContent=S.closedMessage;an.style.display='block';an.style.background='#7a2020';an.style.color='#fff'}
+  const lk=[];if(S.contactPhone)lk.push(`<a href="tel:${esc(S.contactPhone)}">📞 ${esc(S.contactPhone)}</a>`);
+  if(S.whatsapp)lk.push(`<a href="https://wa.me/${esc(S.whatsapp.replace(/\D/g,''))}" target="_blank" rel="noopener">واتساب</a>`);
+  if(S.contactEmail)lk.push(`<a href="mailto:${esc(S.contactEmail)}">✉ ${esc(S.contactEmail)}</a>`);
+  for(const [k,l] of [['instagram','انستجرام'],['facebook','فيسبوك'],['tiktok','تيك توك']])if(/^https?:\/\//.test(S[k]||''))lk.push(`<a href="${esc(S[k])}" target="_blank" rel="noopener">${l}</a>`);
+  if(S.contactAddress)lk.push(`<span>📍 ${esc(S.contactAddress)}</span>`);
+  document.getElementById('footerLinks').innerHTML=lk.join('');
+  document.querySelectorAll('#footerLinks a').forEach(a=>a.style.color='var(--gold)');
+  {const foot=document.querySelector('footer');for(const id of (S.sectionOrder||['collection','about','reviews'])){const e=document.getElementById(id);if(e)foot.parentNode.insertBefore(e,foot)}}
   const R=document.documentElement.style;
   R.setProperty('--gold',S.colorGold);R.setProperty('--gold-light',S.colorGoldLight);R.setProperty('--dark',S.colorBg);R.setProperty('--dark2',S.colorCard);R.setProperty('--cream',S.colorText);
   document.getElementById('about').style.display=S.showAbout===false?'none':'';
