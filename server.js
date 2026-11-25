@@ -409,7 +409,7 @@ http.createServer(async (req, res) => {
       let buf = null;
       if (APPS[app][rel]) buf = await tryonAsset(app, rel);
       else if (app === 'bingo' && rel === 'lib/decart.bundle.js') buf = decartBundle();
-      else if (app === 'bingo' && /^photos\/[A-Za-z0-9_.-]+$/.test(rel)) { buf = bingoPhoto(rel.slice(7)); if (buf && rel.endsWith('.png')) { res.writeHead(200, { 'Content-Type': 'image/webp', 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400' }); return res.end(buf); } }
+      else if (app === 'bingo' && /^photos\/[A-Za-z0-9_.-]+$/.test(rel)) { buf = bingoPhoto(rel.slice(7)); if (buf && rel.endsWith('.png')) { res.writeHead(200, { 'Content-Type': 'image/webp', 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400', 'Access-Control-Allow-Origin': '*', 'Cross-Origin-Resource-Policy': 'cross-origin' }); return res.end(buf); } }
       else {
         const root = path.join(__dirname, app), fp = path.normalize(path.join(root, rel));
         if (fp.startsWith(root + path.sep) && /\.(html|js)$/.test(fp) && fs.existsSync(fp) && fs.statSync(fp).isFile()) buf = fs.readFileSync(fp);
