@@ -209,8 +209,8 @@ let decartBuf = null;
 function decartBundle() {
   if (decartBuf) return decartBuf;
   const dir = path.join(__dirname, 'bingo', 'lib'); let b64 = '';
-  for (let i = 1; ; i++) { const f = path.join(dir, 'decart.b64.' + i + '.txt'); if (!fs.existsSync(f)) break; b64 += fs.readFileSync(f, 'utf8').replace(/\s+/g, ''); }
-  const b = Buffer.from(b64, 'base64');
+  for (let i = 1; ; i++) { const f = path.join(dir, 'decart.z64.' + i + '.txt'); if (!fs.existsSync(f)) break; b64 += fs.readFileSync(f, 'utf8').replace(/\s+/g, ''); }
+  const b = require('zlib').inflateSync(Buffer.from(b64, 'base64'));
   if (crypto.createHash('sha256').update(b).digest('hex') !== DECART_SHA) return null;
   return (decartBuf = b);
 }
