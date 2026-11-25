@@ -63,7 +63,7 @@ async function products(){
 function pform(p){
   const id=p?p.id:'new';p=p||{name:'',notes:'',price:'',old:'',tag:'',stock:true};
   return '<div class="card" id="pc'+id+'"><h3>'+(p.name?esc(p.name):'منتج جديد')+'</h3>'+
-  '<div class="row"><div><label>الاسم</label><input type="text" id="n'+id+'" value="'+esc(p.name)+'"></div><div><label>شارة (مثلاً: الأكثر مبيعاً)</label><input type="text" id="t'+id+'" value="'+esc(p.tag||'')+'"></div></div>'+
+  '<div class="row"><div><label>الاسم</label><input type="text" id="n'+id+'" value="'+esc(p.name)+'"></div><div><label>شارة (مثلاً: الأكثر مبيعاً)</label><input type="text" id="t'+id+'" value="'+esc(p.tag||'')+'"></div></div>'+'<label>التصنيف (مثلاً: رجالي، حريمي، يونيسكس)</label><input type="text" id="ca'+id+'" value="'+esc(p.cat||'')+'">'+
   '<label>الوصف</label><input type="text" id="d'+id+'" value="'+esc(p.notes)+'">'+
   '<div class="row"><div><label>السعر (ج.م)</label><input type="number" id="pr'+id+'" value="'+esc(p.price)+'"></div><div><label>السعر قبل الخصم (اختياري)</label><input type="number" id="od'+id+'" value="'+esc(p.old||'')+'"></div></div>'+
   '<label>الصورة</label>'+(p.image?'<img class="pv" id="pv'+id+'" src="'+p.image+'">':'<img class="pv" id="pv'+id+'" style="display:none">')+
@@ -73,7 +73,7 @@ function pform(p){
 }
 function addP(){if($('#pcnew'))return;$('#pl').insertAdjacentHTML('afterbegin',pform(null))}
 async function saveP(id){
-  const b={name:$('#n'+id).value,tag:$('#t'+id).value,notes:$('#d'+id).value,price:$('#pr'+id).value,old:$('#od'+id).value,stock:$('#st'+id).checked};
+  const b={name:$('#n'+id).value,tag:$('#t'+id).value,cat:$('#ca'+id).value,notes:$('#d'+id).value,price:$('#pr'+id).value,old:$('#od'+id).value,stock:$('#st'+id).checked};
   if(id!=='new')b.id=Number(id);
   if(PIMG[id])b.image=PIMG[id];
   const{ok,d}=await api('/api/admin/product',b);
@@ -86,15 +86,25 @@ let S={},LOGO=null;
 const TXT=[['brandName','اسم البراند (بجانب اللوجو لو مفيش صورة)'],['brandSub','السطر الصغير تحت الاسم'],['heroEyebrow','سطر صغير فوق العنوان'],['heroTitle1','العنوان الرئيسي - الكلمة الأولى'],['heroTitle2','العنوان الرئيسي - الكلمة الملونة'],['collectionEyebrow','قسم المنتجات - سطر صغير'],['collectionTitle','قسم المنتجات - العنوان'],['aboutTitle1','عن البراند - الكلمة الأولى'],['aboutTitle2','عن البراند - الكلمة الملونة'],['reviewsTitle','عنوان الآراء'],['footerText','نص أسفل الصفحة'],['copyright','حقوق النشر']];
 const CLR=[['colorGold','لون الذهبي (الرئيسي)'],['colorGoldLight','الذهبي الفاتح'],['colorBg','لون الخلفية'],['colorCard','لون الكروت'],['colorText','لون الكتابة']];
 async function site(){
-  S=(await(await fetch('/api/site')).json()).settings;LOGO=null;
+  S=(await api('/api/admin/settings')).d;LOGO=null;
   $('#c').innerHTML='<h2>اللوجو والنصوص</h2><div class="card"><h3>اللوجو</h3><div id="lg"></div><input type="file" accept="image/*" onchange="pickImage(this,400,u=>{LOGO=u;lgShow(u)})"> <button class="sec" onclick="LOGO=\'\';lgShow(\'\')">إزالة اللوجو (يرجع الاسم)</button></div>'+
   '<div class="card"><h3>النصوص</h3>'+TXT.map(([k,l])=>'<label>'+l+'</label><input type="text" id="s_'+k+'" value="'+esc(S[k])+'">').join('')+
   '<label>الجملة تحت العنوان الرئيسي</label><textarea id="s_heroSub">'+esc(S.heroSub)+'</textarea><label>حكاية البراند</label><textarea id="s_aboutText">'+esc(S.aboutText)+'</textarea></div>'+
+  '<div class="card"><h3>حالة المتجر والإعلان</h3><label><input type="checkbox" id="s_storeOpen"'+(S.storeOpen!==false?' checked':'')+'> المتجر مفتوح (لو شلتها العملاء مش هيقدروا يطلبوا)</label><label>رسالة وقت الإغلاق</label><input type="text" id="s_closedMessage" value="'+esc(S.closedMessage)+'"><label>شريط إعلان أعلى الموقع (اتركه فاضي لإخفائه)</label><input type="text" id="s_announcement" value="'+esc(S.announcement)+'"></div>'+
+  '<div class="card"><h3>التواصل والسوشيال</h3>'+[['contactPhone','رقم التليفون'],['whatsapp','رقم الواتساب (بالكود الدولي مثال 201xxxxxxxxx)'],['contactEmail','الإيميل'],['contactAddress','العنوان'],['instagram','رابط انستجرام (https://...)'],['facebook','رابط فيسبوك (https://...)'],['tiktok','رابط تيك توك (https://...)']].map(([k,l])=>'<label>'+l+'</label><input type="text" id="s_'+k+'" value="'+esc(S[k])+'">').join('')+'</div>'+
+  '<div class="card"><h3>الشحن والدفع</h3><div class="row"><div><label>سعر الشحن (ج.م) - 0 = مجاني</label><input type="number" id="s_shippingFee" value="'+esc(S.shippingFee)+'"></div><div><label>شحن مجاني للطلبات من (ج.م) - 0 = بدون</label><input type="number" id="s_freeShipFrom" value="'+esc(S.freeShipFrom)+'"></div></div><label><input type="checkbox" id="s_payCash"'+(S.payCash!==false?' checked':'')+'> الدفع عند الاستلام</label><label><input type="checkbox" id="s_payTransfer"'+(S.payTransfer?' checked':'')+'> التحويل (فودافون كاش / انستاباي)</label><label>بيانات التحويل اللي هتظهر للعميل (الرقم واسم الحساب)</label><input type="text" id="s_transferInfo" value="'+esc(S.transferInfo)+'"></div>'+
+  '<div class="card"><h3>أكواد الخصم</h3><div id="codeBox"></div><button class="sec" onclick="addCode()">+ كود جديد</button></div>'+
+  '<div class="card"><h3>ترتيب الأقسام</h3><div id="ordBox"></div></div>'+
   '<div class="card"><h3>الألوان والأقسام</h3><div class="row">'+CLR.map(([k,l])=>'<div><label>'+l+'</label><input type="color" id="s_'+k+'" value="'+esc(S[k])+'" style="width:100%;height:42px;padding:2px"></div>').join('')+'</div><label><input type="checkbox" id="s_showAbout"'+(S.showAbout!==false?' checked':'')+'> إظهار قسم حكاية البراند والمميزات</label><label><input type="checkbox" id="s_showReviews"'+(S.showReviews!==false?' checked':'')+'> إظهار قسم آراء العملاء</label></div>'+
-  '<div class="card"><h3>المميزات</h3><div id="featBox"></div><button class="sec" onclick="addFeat()">+ إضافة ميزة</button></div>'+'<div class="card"><h3>آراء العملاء</h3><div id="revBox"></div><button class="sec" onclick="addRev()">+ إضافة رأي</button></div>'+'<button onclick="saveSite()" style="width:100%;padding:14px">حفظ كل التعديلات</button>';
-  lgShow(S.logoImage||'');drawFeat();drawRev();
+  '<div class="card"><h3>المميزات</h3><div id="featBox"></div><button class="sec" onclick="addFeat()">+ إضافة ميزة</button></div>'+'<div class="card"><h3>آراء العملاء</h3><div id="revBox"></div><button class="sec" onclick="addRev()">+ إضافة رأي</button></div>'+'<button onclick="saveSite()" style="width:100%;padding:14px">حفظ كل التعديلات</button>'+'<div class="card"><h3>تغيير كلمة سر لوحة التحكم</h3><label>الكلمة الحالية</label><input type="password" id="pwc" style="width:100%"><label>الكلمة الجديدة (8 حروف على الأقل)</label><input type="password" id="pwn" style="width:100%"><br><br><button onclick="chPw()">تغيير</button></div>';
+  lgShow(S.logoImage||'');drawFeat();drawRev();drawCodes();drawOrd();
 }
-function collect(){S.features=[...document.querySelectorAll('#featBox .it')].map(e=>({ico:e.querySelector('.a').value,title:e.querySelector('.b').value,desc:e.querySelector('.c').value}));S.reviews=[...document.querySelectorAll('#revBox .it')].map(e=>({name:e.querySelector('.a').value,stars:e.querySelector('.b').value,text:e.querySelector('.c').value}))}
+const SECN={collection:'المنتجات',about:'حكاية البراند والمميزات',reviews:'آراء العملاء'};
+function drawOrd(){$('#ordBox').innerHTML=S.sectionOrder.map((k,i)=>'<div style="margin:6px 0">'+(i+1)+'. '+SECN[k]+' <button class="sec" onclick="mv('+i+',-1)">⬆</button> <button class="sec" onclick="mv('+i+',1)">⬇</button></div>').join('')}
+function mv(i,d){const j=i+d;if(j<0||j>=S.sectionOrder.length)return;collect();const o=S.sectionOrder;[o[i],o[j]]=[o[j],o[i]];drawOrd()}
+function drawCodes(){$('#codeBox').innerHTML=S.codes.map((c,i)=>'<div class="it row"><div><label>الكود</label><input type="text" class="a" value="'+esc(c.code)+'"></div><div><label>النوع</label><select class="b"><option value="percent"'+(c.type==='percent'?' selected':'')+'>نسبة %</option><option value="fixed"'+(c.type==='fixed'?' selected':'')+'>مبلغ ثابت ج.م</option></select></div><div><label>القيمة</label><input type="number" class="c" value="'+esc(c.value)+'"></div><div><label><input type="checkbox" class="d"'+(c.active!==false?' checked':'')+'> شغال</label><button class="red" onclick="collect();S.codes.splice('+i+',1);drawCodes()">حذف</button></div></div>').join('')||'<p class="muted">مفيش أكواد.</p>'}
+function addCode(){collect();S.codes.push({code:'',type:'percent',value:10,active:true});drawCodes()}
+function collect(){S.codes=[...document.querySelectorAll('#codeBox .it')].map(e=>({code:e.querySelector('.a').value,type:e.querySelector('.b').value,value:e.querySelector('.c').value,active:e.querySelector('.d').checked}));S.features=[...document.querySelectorAll('#featBox .it')].map(e=>({ico:e.querySelector('.a').value,title:e.querySelector('.b').value,desc:e.querySelector('.c').value}));S.reviews=[...document.querySelectorAll('#revBox .it')].map(e=>({name:e.querySelector('.a').value,stars:e.querySelector('.b').value,text:e.querySelector('.c').value}))}
 function drawFeat(){$('#featBox').innerHTML=S.features.map((f,i)=>'<div class="it"><div class="row"><div><label>أيقونة / إيموجي</label><input type="text" class="a" value="'+esc(f.ico)+'"></div><div><label>العنوان</label><input type="text" class="b" value="'+esc(f.title)+'"></div></div><label>الوصف</label><input type="text" class="c" value="'+esc(f.desc)+'"> <button class="red" onclick="collect();S.features.splice('+i+',1);drawFeat()">حذف</button><hr></div>').join('')}
 function addFeat(){collect();S.features.push({ico:'⭐',title:'',desc:''});drawFeat()}
 function drawRev(){$('#revBox').innerHTML=S.reviews.map((r,i)=>'<div class="it"><div class="row"><div><label>الاسم</label><input type="text" class="a" value="'+esc(r.name)+'"></div><div><label>عدد النجوم (1-5)</label><input type="number" min="1" max="5" class="b" value="'+r.stars+'"></div></div><label>الرأي</label><textarea class="c">'+esc(r.text)+'</textarea><button class="red" onclick="collect();S.reviews.splice('+i+',1);drawRev()">حذف</button><hr></div>').join('')}
@@ -104,10 +114,12 @@ function _unused(){return ''+S.features.map((f,i)=>'<div class="row"><div><label
   '<button onclick="saveSite()" style="width:100%;padding:14px">حفظ كل التعديلات</button>';
   lgShow(S.logoImage||'');
 }
+async function chPw(){const{ok,d}=await api('/api/admin/password',{current:$('#pwc').value,next:$('#pwn').value});alert(ok?'تم تغيير كلمة السر ✓ (احفظها كويس)':(d.error||'خطأ'));if(ok){$('#pwc').value='';$('#pwn').value=''}}
 function lgShow(u){$('#lg').innerHTML=u?'<img class="pv" style="max-height:80px;background:#000" src="'+u+'">':'<p class="muted">مفيش لوجو صورة حالياً، بيظهر الاسم كنص.</p>'}
 async function saveSite(){
-  const b={};
+  collect();const b={};
   TXT.forEach(([k])=>b[k]=$('#s_'+k).value);b.heroSub=$('#s_heroSub').value;b.aboutText=$('#s_aboutText').value;
+  ['storeOpen','payCash','payTransfer'].forEach(k=>b[k]=$('#s_'+k).checked);['closedMessage','announcement','contactPhone','whatsapp','contactEmail','contactAddress','instagram','facebook','tiktok','transferInfo','shippingFee','freeShipFrom'].forEach(k=>b[k]=$('#s_'+k).value);b.codes=S.codes;b.sectionOrder=S.sectionOrder;
   CLR.forEach(([k])=>b[k]=$('#s_'+k).value);b.showAbout=$('#s_showAbout').checked;b.showReviews=$('#s_showReviews').checked;
   collect();b.features=S.features;b.reviews=S.reviews;
   if(LOGO!==null)b.logoImage=LOGO;
