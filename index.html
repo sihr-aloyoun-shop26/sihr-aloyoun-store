@@ -33,7 +33,7 @@ nav{position:fixed;top:0;right:0;left:0;z-index:100;display:flex;align-items:cen
 /* ---------- Hero ---------- */
 .hero{min-height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;position:relative;
   background:radial-gradient(ellipse at 50% 120%,rgba(201,162,75,.18),transparent 60%),
-             radial-gradient(ellipse at 50% -20%,rgba(201,162,75,.12),transparent 55%),var(--dark)}
+             radial-gradient(ellipse at 50% -20%,rgba(201,162,75,.12),transparent 55%)}
 .hero::after{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ccircle cx='60' cy='60' r='1' fill='%23c9a24b' opacity='.25'/%3E%3C/svg%3E");pointer-events:none}
 .hero-inner{position:relative;z-index:2;padding:120px 20px 60px;max-width:820px}
 .hero .eyebrow{color:var(--gold);letter-spacing:6px;font-size:.85rem;margin-bottom:18px}
@@ -92,7 +92,14 @@ section{padding:90px 6%}
 .add-btn.added{background:var(--gold);color:var(--dark)}
 
 /* ---------- About ---------- */
-.about{background:var(--dark2)}
+.about{background:color-mix(in srgb,var(--dark2) 72%,transparent)}
+#bgFx{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+#bgImg{position:absolute;inset:0;background-size:cover;background-position:center;transform:scale(1.06)}
+#bgDim{position:absolute;inset:0;background:var(--dark)}
+#bgMist{position:absolute;inset:-20%;opacity:.9;background:radial-gradient(40% 35% at 20% 30%,rgba(201,162,75,.16),transparent 70%),radial-gradient(45% 40% at 80% 60%,rgba(232,207,138,.10),transparent 70%),radial-gradient(35% 30% at 50% 90%,rgba(201,162,75,.14),transparent 70%);animation:mist 28s ease-in-out infinite alternate;will-change:transform}
+@keyframes mist{0%{transform:translate3d(-3%,-2%,0) scale(1)}100%{transform:translate3d(4%,3%,0) scale(1.12)}}
+#bgCan{position:absolute;inset:0;width:100%;height:100%}
+@media(prefers-reduced-motion:reduce){#bgMist{animation:none}}
 .about-inner{max-width:900px;margin:0 auto;display:flex;gap:50px;align-items:center;flex-wrap:wrap}
 .about-text{flex:1;min-width:280px}
 .about-text h2{font-size:2.2rem;margin-bottom:16px}
@@ -184,6 +191,7 @@ footer .logo{margin-bottom:8px}
 <body>
 
 <div id="announce" style="display:none;background:var(--gold);color:#111;text-align:center;padding:8px;font-weight:700;position:relative;z-index:101"></div>
+<div id="bgFx"><div id="bgImg"></div><div id="bgDim"></div><div id="bgMist"></div><canvas id="bgCan"></canvas></div>
 <nav>
   <div class="logo" data-logo></div>
   <ul class="nav-links">
@@ -445,7 +453,37 @@ async function placeOrder(){
 function finishOrder(){document.getElementById('checkoutModal').classList.remove('open')}
 
 function esc(t){return String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-function applySettings(S){
+let FX={raf:0,run:false};
+function applyBg(S){
+  const st=S.bgStyle||'both',img=document.getElementById('bgImg'),dim=document.getElementById('bgDim');
+  img.style.backgroundImage=S.bgImage?`url(${S.bgImage})`:'none';img.style.display=S.bgImage?'block':'none';
+  dim.style.display=S.bgImage?'block':'none';dim.style.opacity=(S.bgDim==null?55:S.bgDim)/100;
+  document.getElementById('bgMist').style.display=(st==='both'||st==='mist')?'block':'none';
+  const cv=document.getElementById('bgCan');cv.style.display=(st==='both'||st==='particles')?'block':'none';
+  FX.on=cv.style.display==='block';
+  if(!FX.on){cancelAnimationFrame(FX.raf);FX.run=false;return}
+  if(FX.run||matchMedia('(prefers-reduced-motion:reduce)').matches)return;
+  FX.run=true;
+  const x=cv.getContext('2d'),mob=innerWidth<700,N=mob?22:48;let W,H,P=[],sy=0;
+  const col=getComputedStyle(document.documentElement).getPropertyValue('--gold').trim()||'#c9a24b';
+  function size(){const d=Math.min(devicePixelRatio||1,1.5);W=cv.width=innerWidth*d;H=cv.height=innerHeight*d;FX.d=d}
+  size();addEventListener('resize',size);addEventListener('scroll',()=>{sy=scrollY},{passive:true});
+  for(let i=0;i<N;i++)P.push({x:Math.random(),y:Math.random(),r:.6+Math.random()*1.8,v:.015+Math.random()*.05,a:.2+Math.random()*.6,p:Math.random()*6.28,z:.3+Math.random()*.9});
+  let last=0;
+  (function tick(t){
+    if(!FX.on){FX.run=false;return}
+    FX.raf=requestAnimationFrame(tick);
+    if(document.hidden||t-last<33)return;last=t;
+    x.clearRect(0,0,W,H);x.fillStyle=col;
+    for(const p of P){
+      p.y-=p.v*.0166;p.p+=.01;if(p.y<-.02){p.y=1.02;p.x=Math.random()}
+      const px=(p.x+Math.sin(p.p)*.012)*W,py=((p.y-sy*p.z*.00006)%1.04+1.04)%1.04*H;
+      x.globalAlpha=p.a*(.6+.4*Math.sin(p.p*2));x.beginPath();x.arc(px,py,p.r*FX.d*(mob?1.2:1),0,6.28);x.fill();
+    }
+    x.globalAlpha=1;
+  })(0);
+}
+function applySettings(S){applyBg(S);
   document.querySelectorAll('[data-logo]').forEach(el=>{el.innerHTML=S.logoImage?`<img src="${S.logoImage}" alt="${esc(S.brandName)}">`:`${esc(S.brandName)}<span>${esc(S.brandSub)}</span>`});
   const T=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v};
   T('heroEyebrow',S.heroEyebrow);T('heroSub',S.heroSub);T('collectionEyebrow',S.collectionEyebrow);T('collectionTitle',S.collectionTitle);
