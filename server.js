@@ -1,4 +1,5 @@
 // متجر سحر العيون - سيرفر بدون مكتبات خارجية (Node 18+)
+// التخزين الدائم: Supabase (لو SUPABASE_URL و SUPABASE_SERVICE_KEY مضبوطين)، وإلا ملفات محلية (للتجربة فقط).
 const http = require('http'), fs = require('fs'), path = require('path'), crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
@@ -6,25 +7,71 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TG_CHAT = process.env.TELEGRAM_CHAT_ID || '';
+const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SB_KEY = (process.env.SUPABASE_SERVICE_KEY || '') + (process.env.SUPABASE_SERVICE_KEY_2 || '');
+const USE_DB = !!(SB_URL && SB_KEY);
 const SECRET = process.env.SESSION_SECRET || crypto.createHash('sha256').update('s:' + ADMIN_PASSWORD).digest('hex');
 if (!ADMIN_PASSWORD) console.warn('تحذير: ADMIN_PASSWORD غير مضبوط، لوحة الأدمن مقفولة.');
+console.log(USE_DB ? 'التخزين: Supabase' : 'تحذير: التخزين محلي ومؤقت');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
-const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
-const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
-if (!fs.existsSync(PRODUCTS_FILE)) fs.copyFileSync(path.join(__dirname, 'products.default.json'), PRODUCTS_FILE);
-if (!fs.existsSync(ORDERS_FILE)) fs.writeFileSync(ORDERS_FILE, '[]');
-
 const readJSON = f => JSON.parse(fs.readFileSync(f, 'utf8'));
-function writeJSON(f, d) { const t = f + '.tmp'; fs.writeFileSync(t, JSON.stringify(d, null, 1)); fs.renameSync(t, f); }
+const DEFAULT_PRODUCTS = readJSON(path.join(__dirname, 'products.default.json'));
+const DEFAULT_SETTINGS = readJSON(path.join(__dirname, 'settings.default.json'));
 
-const GOVS = null; // أي محافظة نصية مقبولة
-const hits = new Map(); // rate limit
-function limited(ip) {
+/* ---------- طبقة التخزين ---------- */
+const localFile = n => path.join(DATA_DIR, n + '.json');
+function localRead(n, def) { try { return readJSON(localFile(n)); } catch (e) { return def; } }
+function localWrite(n, d) { const t = localFile(n) + '.tmp'; fs.writeFileSync(t, JSON.stringify(d)); fs.renameSync(t, localFile(n)); }
+
+async function sb(method, pathq, body, extra) {
+  const r = await fetch(SB_URL + '/rest/v1/' + pathq, {
+    method,
+    headers: Object.assign({ apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' }, extra || {}),
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  const txt = await r.text();
+  if (!r.ok) throw new Error('db ' + r.status + ' ' + txt.slice(0, 200));
+  return txt ? JSON.parse(txt) : null;
+}
+async function kvGet(key, def) {
+  if (!USE_DB) return localRead(key, def);
+  const rows = await sb('GET', 'kv?key=eq.' + encodeURIComponent(key) + '&select=value');
+  return rows && rows.length ? rows[0].value : def;
+}
+async function kvSet(key, value) {
+  if (!USE_DB) return localWrite(key, value);
+  await sb('POST', 'kv?on_conflict=key', { key, value }, { Prefer: 'resolution=merge-duplicates,return=minimal' });
+}
+async function ordersAll() {
+  if (!USE_DB) return localRead('orders', []);
+  const rows = await sb('GET', 'orders?select=data&order=created_at.asc&limit=5000');
+  return rows.map(r => r.data);
+}
+async function orderAdd(o) {
+  if (!USE_DB) { const a = localRead('orders', []); a.push(o); return localWrite('orders', a); }
+  await sb('POST', 'orders', { num: o.num, data: o }, { Prefer: 'return=minimal' });
+}
+async function orderSetStatus(num, status) {
+  if (!USE_DB) { const a = localRead('orders', []); const o = a.find(x => x.num === num); if (!o) return false; o.status = status; localWrite('orders', a); return true; }
+  const rows = await sb('GET', 'orders?num=eq.' + encodeURIComponent(num) + '&select=data');
+  if (!rows.length) return false;
+  const o = rows[0].data; o.status = status;
+  await sb('PATCH', 'orders?num=eq.' + encodeURIComponent(num), { data: o }, { Prefer: 'return=minimal' });
+  return true;
+}
+async function getProducts() { return kvGet('products', DEFAULT_PRODUCTS); }
+async function getSettings() { return Object.assign({}, DEFAULT_SETTINGS, await kvGet('settings', {})); }
+
+/* ---------- أدوات ---------- */
+const hits = new Map();
+function limited(ip, max) {
   const now = Date.now(), a = (hits.get(ip) || []).filter(t => now - t < 3600e3);
-  a.push(now); hits.set(ip, a); return a.length > 10;
+  a.push(now); hits.set(ip, a); return a.length > (max || 10);
 }
 const clean = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+const cleanLong = (s, n) => String(s == null ? '' : s).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').trim().slice(0, n);
+const okImg = s => s === '' || (typeof s === 'string' && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+\/=]+$/.test(s) && s.length < 700000);
 
 function sign(v) { return crypto.createHmac('sha256', SECRET).update(v).digest('hex'); }
 function makeToken() { const e = String(Date.now() + 7 * 864e5); return e + '.' + sign(e); }
@@ -37,17 +84,16 @@ function validToken(t) {
 function isAdmin(req) {
   if (!ADMIN_PASSWORD) return false;
   const m = /(?:^|;\s*)adm=([^;]+)/.exec(req.headers.cookie || '');
-  return m && validToken(m[1]);
+  return !!(m && validToken(m[1]));
 }
-
-function body(req) {
+function body(req, max) {
   return new Promise((res, rej) => {
-    let d = ''; req.on('data', c => { d += c; if (d.length > 50000) { rej(new Error('big')); req.destroy(); } });
+    let d = ''; req.on('data', c => { d += c; if (d.length > (max || 50000)) { rej(new Error('big')); req.destroy(); } });
     req.on('end', () => { try { res(JSON.parse(d || '{}')); } catch (e) { rej(e); } });
   });
 }
 function send(res, code, obj, headers = {}) {
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', ...headers });
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
   res.end(JSON.stringify(obj));
 }
 
@@ -66,14 +112,30 @@ async function notify(o, items) {
   } catch (e) { console.error('Telegram failed', e.message); return 'failed'; }
 }
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+function sanitizeSettings(b) {
+  const s = {};
+  for (const k of ['brandName', 'brandSub', 'heroEyebrow', 'heroTitle1', 'heroTitle2', 'collectionEyebrow', 'collectionTitle',
+    'aboutTitle1', 'aboutTitle2', 'reviewsTitle', 'footerText', 'copyright']) if (b[k] !== undefined) s[k] = clean(b[k], 120);
+  for (const k of ['colorGold', 'colorGoldLight', 'colorBg', 'colorCard', 'colorText']) if (b[k] !== undefined) { if (!/^#[0-9a-fA-F]{6}$/.test(b[k])) throw new Error('لون غير صالح'); s[k] = b[k]; }
+  for (const k of ['showAbout', 'showReviews']) if (b[k] !== undefined) s[k] = !!b[k];
+  if (b.heroSub !== undefined) s.heroSub = cleanLong(b.heroSub, 400);
+  if (b.aboutText !== undefined) s.aboutText = cleanLong(b.aboutText, 1200);
+  if (b.logoImage !== undefined) { if (!okImg(b.logoImage)) throw new Error('صورة اللوجو غير صالحة'); s.logoImage = b.logoImage; }
+  if (Array.isArray(b.features)) s.features = b.features.slice(0, 8).map(f => ({ ico: clean(f.ico, 8), title: clean(f.title, 80), desc: clean(f.desc, 160) }));
+  if (Array.isArray(b.reviews)) s.reviews = b.reviews.slice(0, 12).map(r => ({ stars: Math.min(5, Math.max(1, Number(r.stars) || 5)), text: cleanLong(r.text, 300), name: clean(r.name, 40) }));
+  return s;
+}
+
+const MIME = { '.html': 'text/html; charset=utf-8' };
+const PAGES = { '/': 'index.html', '/index.html': 'index.html', '/admin': 'admin.html', '/admin.html': 'admin.html' };
 
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x'), p = url.pathname;
     const ip = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
 
-    if (p === '/api/products' && req.method === 'GET') return send(res, 200, readJSON(PRODUCTS_FILE));
+    if (p === '/api/site' && req.method === 'GET') return send(res, 200, { settings: await getSettings(), products: await getProducts() });
+    if (p === '/api/products' && req.method === 'GET') return send(res, 200, await getProducts());
 
     if (p === '/api/orders' && req.method === 'POST') {
       if (limited(ip)) return send(res, 429, { error: 'طلبات كتير، حاول بعد شوية' });
@@ -82,23 +144,22 @@ http.createServer(async (req, res) => {
         addr = clean(b.addr, 300), notes = clean(b.notes, 300), pay = clean(b.pay, 60);
       if (!name || !gov || !addr) return send(res, 400, { error: 'بيانات ناقصة' });
       if (!/^01[0-9]{9}$/.test(phone)) return send(res, 400, { error: 'رقم الموبايل غير صحيح' });
-      const prods = readJSON(PRODUCTS_FILE), items = []; let total = 0;
+      const prods = await getProducts(), items = []; let total = 0;
       for (const [id, q] of Object.entries(b.items || {})) {
         const pr = prods.find(x => String(x.id) === String(id)); const qty = Math.floor(Number(q));
         if (!pr || pr.stock === false || !(qty >= 1 && qty <= 20)) return send(res, 400, { error: 'منتج غير متاح' });
         items.push({ id: pr.id, name: pr.name, price: pr.price, qty }); total += pr.price * qty;
       }
       if (!items.length) return send(res, 400, { error: 'السلة فاضية' });
-      const orders = readJSON(ORDERS_FILE);
-      let num; do { num = 'SO-' + (100000 + crypto.randomInt(900000)); } while (orders.some(o => o.num === num));
+      const num = 'SO-' + (100000 + crypto.randomInt(900000));
       const o = { num, at: new Date().toISOString(), name, phone, gov, addr, pay, notes, items, total, status: 'new' };
-      orders.push(o); writeJSON(ORDERS_FILE, orders);
+      await orderAdd(o);
       notify(o, items);
       return send(res, 200, { ok: true, num });
     }
 
     if (p === '/api/admin/login' && req.method === 'POST') {
-      if (limited('login' + ip)) return send(res, 429, { error: 'محاولات كتير' });
+      if (limited('login' + ip, 15)) return send(res, 429, { error: 'محاولات كتير' });
       const b = await body(req);
       const a = Buffer.from(String(b.password || '')), c = Buffer.from(ADMIN_PASSWORD);
       if (ADMIN_PASSWORD && a.length === c.length && crypto.timingSafeEqual(a, c))
@@ -108,34 +169,52 @@ http.createServer(async (req, res) => {
 
     if (p.startsWith('/api/admin/')) {
       if (!isAdmin(req)) return send(res, 401, { error: 'غير مصرح' });
+      if (p === '/api/admin/info') return send(res, 200, { storage: USE_DB ? 'db' : 'local', telegram: !!(TG_TOKEN && TG_CHAT) });
       if (p === '/api/admin/test-notify' && req.method === 'POST') {
-        const items = [{ name: 'إشعار تجريبي', qty: 1 }];
-        const st = await notify({ num: 'TEST', name: 'تجربة', phone: '-', gov: '-', addr: '-', pay: '-', total: 0, notes: 'ده اختبار، مش طلب حقيقي' }, items);
+        const st = await notify({ num: 'TEST', name: 'تجربة', phone: '-', gov: '-', addr: '-', pay: '-', total: 0, notes: 'ده اختبار، مش طلب حقيقي' }, [{ name: 'إشعار تجريبي', qty: 1 }]);
         return send(res, 200, { result: st });
       }
-      if (p === '/api/admin/orders' && req.method === 'GET') return send(res, 200, readJSON(ORDERS_FILE).reverse());
+      if (p === '/api/admin/orders' && req.method === 'GET') return send(res, 200, (await ordersAll()).reverse());
       if (p === '/api/admin/status' && req.method === 'POST') {
-        const b = await body(req), orders = readJSON(ORDERS_FILE), o = orders.find(x => x.num === b.num);
-        if (!o || !['new', 'confirmed', 'shipped', 'delivered', 'canceled'].includes(b.status)) return send(res, 400, { error: 'خطأ' });
-        o.status = b.status; writeJSON(ORDERS_FILE, orders); return send(res, 200, { ok: true });
+        const b = await body(req);
+        if (!['new', 'confirmed', 'shipped', 'delivered', 'canceled'].includes(b.status)) return send(res, 400, { error: 'خطأ' });
+        return (await orderSetStatus(b.num, b.status)) ? send(res, 200, { ok: true }) : send(res, 400, { error: 'الطلب مش موجود' });
       }
-      if (p === '/api/admin/products' && req.method === 'POST') {
-        const b = await body(req), prods = readJSON(PRODUCTS_FILE), x = prods.find(q => q.id === b.id);
-        if (!x) return send(res, 400, { error: 'منتج غير موجود' });
-        if (b.price != null) { const n = Number(b.price); if (!(n > 0 && n < 1e6)) return send(res, 400, { error: 'سعر غلط' }); x.price = n; }
+      if (p === '/api/admin/backup' && req.method === 'GET') {
+        return send(res, 200, { exportedAt: new Date().toISOString(), settings: await getSettings(), products: await getProducts(), orders: await ordersAll() },
+          { 'Content-Disposition': 'attachment; filename="sihr-aloyoun-backup.json"' });
+      }
+      if (p === '/api/admin/settings' && req.method === 'POST') {
+        const b = await body(req, 1000000);
+        const cur = await getSettings();
+        let ns; try { ns = sanitizeSettings(b); } catch (e) { return send(res, 400, { error: e.message }); }
+        await kvSet('settings', Object.assign({}, cur, ns));
+        return send(res, 200, { ok: true });
+      }
+      if (p === '/api/admin/product' && req.method === 'POST') { // إضافة أو تعديل
+        const b = await body(req, 1000000), prods = await getProducts();
+        let x = b.id ? prods.find(q => q.id === b.id) : null;
+        if (!x) { x = { id: prods.reduce((m, q) => Math.max(m, q.id), 0) + 1, c1: '#c9a24b', c2: '#5b3a1a', stock: true, tag: null, old: null }; prods.push(x); }
+        if (b.name !== undefined) { x.name = clean(b.name, 60); if (!x.name) return send(res, 400, { error: 'الاسم مطلوب' }); }
+        if (b.notes !== undefined) x.notes = clean(b.notes, 200);
+        if (b.tag !== undefined) x.tag = clean(b.tag, 20) || null;
+        if (b.price !== undefined) { const n = Number(b.price); if (!(n > 0 && n < 1e6)) return send(res, 400, { error: 'سعر غلط' }); x.price = n; }
         if (b.old !== undefined) x.old = b.old ? Number(b.old) : null;
         if (b.stock !== undefined) x.stock = !!b.stock;
-        if (b.name) x.name = clean(b.name, 60);
-        writeJSON(PRODUCTS_FILE, prods); return send(res, 200, { ok: true });
+        if (b.image !== undefined) { if (!okImg(b.image)) return send(res, 400, { error: 'صورة غير صالحة أو كبيرة' }); x.image = b.image; }
+        if (typeof x.price !== 'number') return send(res, 400, { error: 'السعر مطلوب' });
+        await kvSet('products', prods); return send(res, 200, { ok: true, id: x.id });
+      }
+      if (p === '/api/admin/product-delete' && req.method === 'POST') {
+        const b = await body(req); const prods = (await getProducts()).filter(q => q.id !== b.id);
+        await kvSet('products', prods); return send(res, 200, { ok: true });
       }
       return send(res, 404, { error: 'not found' });
     }
 
-    // static
-    let f = p === '/' ? '/index.html' : p === '/admin' ? '/admin.html' : p;
-    const full = path.join(__dirname, path.basename(f));
-    if (!['index.html','admin.html'].includes(path.basename(full)) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream' });
-    fs.createReadStream(full).pipe(res);
+    const page = PAGES[p];
+    if (!page) { res.writeHead(404); return res.end('Not found'); }
+    res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
+    fs.createReadStream(path.join(__dirname, page)).pipe(res);
   } catch (e) { console.error(e); try { send(res, 500, { error: 'خطأ في السيرفر' }); } catch (_) {} }
 }).listen(PORT, () => console.log('Store running on port ' + PORT));
