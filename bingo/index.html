@@ -60,7 +60,8 @@ const src=p=>photo[p.id]?photo[p.id].src:uri(p.t,st[p.id].c);
 function render(){grid.innerHTML=P.map(p=>`<div class="card"><div class="im"><img src="${src(p)}"></div><div class="b"><b>${p.n}</b><div class="price">${p.p} ج.م</div>
 ${photo[p.id]?'':`<div class="row">${Object.keys(COLORS).map(c=>`<button class="dot ${st[p.id].c==c?'on':''}" style="background:${COLORS[c]}" onclick="setC('${p.id}','${c}')"></button>`).join('')}</div>`}
 <div class="row sz">${SZ.map(s=>`<button class="${st[p.id].s==s?'on':''}" onclick="setS('${p.id}','${s}')">${s}</button>`).join('')}</div>
-<div class="row"><button onclick="add('${p.id}')">أضف للسلة</button><button class="g" onclick="openTry('${p.id}')">جرّبها عليك 📷</button></div></div></div>`).join('')}
+<div class="row"><button onclick="add('${p.id}')">أضف للسلة</button><button class="g" onclick="openTry('${p.id}')">جرّبها عليك 📷</button></div>${photo[p.id]?`<div class="row"><button class="g" style="flex:1;background:#6d28d9;color:#fff" onclick="liveTry('${p.id}')">🎥 جرّب حي بالكاميرا</button></div>`:''}</div></div>`).join('')}
+window.liveTry=i=>{const url=location.origin+'/bingo/photos/'+i+'.png';if(!window.DecartWidget){alert('أداة الكاميرا الحية لسه بتحمّل، جرب بعد ثواني');return}try{sessionStorage.setItem('decart_auto_start_url',url)}catch(e){}try{DecartWidget.open({})}catch(e){}let n=0;const send=()=>{const f=document.querySelector('#__decart-tryon-widget iframe');if(f&&f.contentWindow)f.contentWindow.postMessage({type:'DECART_DROP_IMAGE',url},'*')};[1500,3500,6000,10000].forEach(t=>setTimeout(send,t))};
 window.setC=(i,c)=>{st[i].c=c;render()};window.setS=(i,s)=>{st[i].s=s;render()};
 let cart=[];window.add=i=>{const p=P.find(x=>x.id==i);cart.push({n:p.n,c:st[i].c,s:st[i].s,p:p.p});drawCart();cartEl.classList.add('show')};
 const cartEl=document.getElementById('cart');window.toggleCart=()=>cartEl.classList.toggle('show');
