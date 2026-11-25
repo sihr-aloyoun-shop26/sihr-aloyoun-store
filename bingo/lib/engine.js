@@ -55,19 +55,38 @@ export function prepare(img, maxSide = 640) {
   let sy = y0; for (let j = y0; j <= y1; j++) if (rowW[j] >= 0.75 * maxW) { sy = j; break; }
   // centre of the silhouette at the shoulder row
   let cl = w, cr = 0; for (let px = 0; px < w; px++) if (al[sy * w + px]) { if (px < cl) cl = px; if (px > cr) cr = px; }
-  return { cv: out, W: bw, H: bh, shoulderY: sy - y0, rowW: Math.max(1, cr - cl + 1), cx: (cl + cr) / 2 - x0 };
+  const G = { cv: out, W: bw, H: bh, shoulderY: sy - y0, rowW: Math.max(1, cr - cl + 1), cx: (cl + cr) / 2 - x0 };
+  G.th = G.rowW * 0.33;
+  const pad = Math.min(G.shoulderY, Math.round(G.rowW * 0.1)); G.pad = pad;
+  const strip = (xa, xb) => {
+    xa = Math.max(0, Math.floor(xa)); xb = Math.min(bw, Math.ceil(xb)); const sw2 = xb - xa; if (sw2 < 6) return null;
+    const ya = G.shoulderY - pad, c2 = document.createElement('canvas'); c2.width = sw2; c2.height = bh - ya;
+    const x2 = c2.getContext('2d', { willReadFrequently: true }); x2.drawImage(out, xa, ya, sw2, bh - ya, 0, 0, sw2, bh - ya);
+    const dd = x2.getImageData(0, 0, sw2, c2.height).data; let last = 0, first = 1e9;
+    for (let j = 0; j < c2.height; j++) { let hit = 0; for (let i = 0; i < sw2; i++) if (dd[(j * sw2 + i) * 4 + 3] > 40) { hit = 1; break; } if (hit) { last = j; if (j < first) first = j; } }
+    if (last < pad + 8) return null;
+    return { cv: c2, w: sw2, h: last + 1 };
+  };
+  G.slL = strip(0, G.cx - G.th);          // image-left strip = person's right arm
+  G.slR = strip(G.cx + G.th, bw);         // image-right strip = person's left arm
+  return G;
 }
 const F = { tee: { wf: 1.42, len: 1.15 }, hood: { wf: 1.55, len: 1.32 }, jacket: { wf: 1.55, len: 1.25 } };
-let prev = null, prevYaw = 0;
-export function resetSmooth() { prev = null; }
+let prev = null, prevYaw = 0, flt = [];
+// One Euro filter: smooth when still, responsive when moving fast (low jitter, low lag)
+class OneEuro { constructor(mc = 1.2, beta = 0.012, dc = 1) { this.mc = mc; this.b = beta; this.dc = dc; this.x = null; this.dx = 0; this.t = 0; }
+  al(c, dt) { const r = 2 * Math.PI * c * dt; return r / (r + 1); }
+  f(v, t) { if (this.x === null) { this.x = v; this.t = t; return v; } const dt = Math.max(1e-3, t - this.t); this.t = t;
+    const d = (v - this.x) / dt; this.dx += this.al(this.dc, dt) * (d - this.dx); const c = this.mc + this.b * Math.abs(this.dx);
+    this.x += this.al(c, dt) * (v - this.x); return this.x; } }
+export function resetSmooth() { prev = null; flt = []; }
 // L = pose landmarks (normalised), W/H canvas px. Returns false if the body is not usable.
-export function drawGarment(ctx, video, L, W, H, g, type, g3) {
-  const pick = [11, 12, 23, 24, 0, 7, 8, 9, 10].map(i => L[i]);
+export function drawGarment(ctx, video, L, W, H, g, type, g3, arms = true) {
+  const pick = [11, 12, 23, 24, 0, 7, 8, 9, 10, 13, 14, 15, 16].map(i => L[i]);
   let pts = pick.map(p => ({ x: p.x * W, y: p.y * H }));
-  if (prev) { const sw0 = Math.hypot(prev[0].x - prev[1].x, prev[0].y - prev[1].y) || 1;
-    pts = pts.map((p, i) => { const sp = Math.hypot(p.x - prev[i].x, p.y - prev[i].y); const a = Math.min(0.85, 0.3 + sp / (sw0 * 0.25)); return { x: prev[i].x * (1 - a) + p.x * a, y: prev[i].y * (1 - a) + p.y * a }; }); }
+  const tnow = performance.now() / 1000; pts = pts.map((p, i) => { const f = (flt[i] = flt[i] || { x: new OneEuro(), y: new OneEuro() }); return { x: f.x.f(p.x, tnow), y: f.y.f(p.y, tnow) }; });
   prev = pts;
-  const [ls, rs, lh, rh, nose, le, re, ml, mr] = pts;
+  const [ls, rs, lh, rh, nose, le, re, ml, mr, lel, rel, lwr, rwr] = pts;
   const sw = Math.hypot(ls.x - rs.x, ls.y - rs.y); if (sw < 20) return false;
   const smid = { x: (ls.x + rs.x) / 2, y: (ls.y + rs.y) / 2 };
   const ex = { x: (ls.x - rs.x) / sw, y: (ls.y - rs.y) / sw };
@@ -85,11 +104,43 @@ export function drawGarment(ctx, video, L, W, H, g, type, g3) {
   let yaw = 0; if (L[11].z !== undefined) { const dz = (L[11].z - L[12].z) * W, dxp = Math.abs(ls.x - rs.x); yaw = Math.max(-1.1, Math.min(1.1, Math.atan2(dz, Math.max(dxp, 1)) * 0.9)); yaw = prevYaw = prevYaw * 0.7 + yaw * 0.3; }
   if (g3) { const cv3 = g3.render({ ex, ey, sx, sY, ox, oy, yaw }); if (cv3) ctx.drawImage(cv3, 0, 0, W, H); }
   else {
+  const useArms = arms && (g.slL || g.slR);
   ctx.save();
   ctx.setTransform(ex.x * sx, ex.y * sx, ey.x * sY, ey.y * sY, ox, oy);
   ctx.translate(-g.cx, -g.shoulderY);
+  if (useArms) { ctx.beginPath(); const cap = 0.12 * g.rowW;
+    ctx.rect(g.cx - g.th, -10, 2 * g.th, g.H + 20); ctx.rect(g.cx - g.th - cap, -10, 2 * (g.th + cap), g.shoulderY + cap + 10); ctx.clip(); }
   ctx.drawImage(g.cv, 0, 0);
-  ctx.restore(); }
+  ctx.restore();
+  if (useArms) {
+    const vis = i => L[i].visibility > 0.4;
+    const sleeve = (st, S, E, Wr, ve, vw) => {
+      if (!st) return;
+      const hang = { x: ey.x, y: ey.y };
+      if (!ve) { E = { x: S.x + hang.x * 0.8 * sw, y: S.y + hang.y * 0.8 * sw }; Wr = { x: E.x + hang.x * 0.7 * sw, y: E.y + hang.y * 0.7 * sw }; }
+      else if (!vw) { const d = { x: (E.x - S.x), y: (E.y - S.y) }; Wr = { x: E.x + d.x * 0.85, y: E.y + d.y * 0.85 }; }
+      const Ls = st.h - g.pad, k = sx;
+      const seg = (srcY, srcH, A, B, ext) => {
+        let dx = B.x - A.x, dy = B.y - A.y; const len = Math.hypot(dx, dy); if (len < 1) return; const ux = dx / len, uy = dy / len;
+        let nx = -uy, ny = ux; if (nx * ex.x + ny * ex.y < 0) { nx = -nx; ny = -ny; }
+        const tl = len + ext; // draw slightly past B so the joints overlap
+        ctx.save(); ctx.setTransform(nx * k, ny * k, ux * tl / srcH, uy * tl / srcH, A.x - nx * k * st.w / 2, A.y - ny * k * st.w / 2);
+        ctx.drawImage(st.cv, 0, srcY, st.w, srcH, 0, 0, st.w, srcH); ctx.restore(); };
+      const padPx = g.pad * k, u1 = Math.hypot(E.x - S.x, E.y - S.y) || 1;
+      const up = { x: (E.x - S.x) / u1, y: (E.y - S.y) / u1 };
+      const S0 = { x: S.x - up.x * padPx, y: S.y - up.y * padPx };
+      const upper = u1, lower = Math.hypot(Wr.x - E.x, Wr.y - E.y);
+      if (Ls * k < 0.8 * upper) { const B = { x: S.x + up.x * Ls * k, y: S.y + up.y * Ls * k }; seg(0, st.h, S0, B, 0); }
+      else { const tot = upper + lower * 1.05, split = Ls * upper / tot;
+        seg(0, g.pad + split, S0, E, 3);
+        const Wx = { x: E.x + (Wr.x - E.x) * 1.05, y: E.y + (Wr.y - E.y) * 1.05 };
+        seg(g.pad + split, st.h - g.pad - split, E, Wx, 0); }
+    };
+    sleeve(g.slL, rs, rel, rwr, vis(14), vis(16));
+    sleeve(g.slR, ls, lel, lwr, vis(13), vis(15));
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+  }
+  }
   // head and neck stay in front of the garment (hood sits behind the head)
   const ed = Math.max(20, Math.hypot(le.x - re.x, le.y - re.y));
   const mY = (ml.y + mr.y) / 2, top = (le.y + re.y) / 2 - 1.05 * ed, bot = mY + 0.45 * ed;
@@ -97,4 +148,4 @@ export function drawGarment(ctx, video, L, W, H, g, type, g3) {
   ctx.save(); ctx.beginPath(); ctx.ellipse(cx, cy, ed * 0.95, (bot - top) / 2, Math.atan2(ex.y, ex.x), 0, Math.PI * 2); ctx.clip();
   ctx.drawImage(video, 0, 0, W, H); ctx.restore();
   return true;
-                                     }
+}
