@@ -215,6 +215,33 @@ function decartBundle() {
   return (decartBuf = b);
 }
 
+
+// Magic Hour photo try-on (free credits only, hard daily caps, never auto top-up)
+const MH = 'https://api.magichour.ai';
+const mhHeaders = () => ({ Authorization: 'Bearer ' + process.env.MAGICHOUR_API_KEY, 'content-type': 'application/json' });
+let mhDay = '', mhUsed = 0; const mhIp = new Map();
+function mhAllow(ip) {
+  const d = new Date().toISOString().slice(0, 10);
+  if (d !== mhDay) { mhDay = d; mhUsed = 0; mhIp.clear(); }
+  if (mhUsed >= parseInt(process.env.MAGICHOUR_MAX_PER_DAY || '5', 10)) return false;
+  const n = mhIp.get(ip) || 0; if (n >= 2) return false;
+  mhIp.set(ip, n + 1); mhUsed++; return true;
+}
+const mhOn = () => !!process.env.MAGICHOUR_API_KEY && process.env.MAGICHOUR_DISABLED !== '1';
+function mhDataUrl(s) {
+  const m = /^data:image\/(jpeg|png);base64,([A-Za-z0-9+/=]+)$/.exec(s || '');
+  if (!m) return null; const buf = Buffer.from(m[2], 'base64'); if (buf.length > 4 * 1024 * 1024) return null;
+  return { ext: m[1] === 'jpeg' ? 'jpg' : 'png', buf };
+}
+async function mhUpload(img) {
+  const r = await fetch(MH + '/v1/files/upload-urls', { method: 'POST', headers: mhHeaders(), body: JSON.stringify({ items: [{ type: 'image', extension: img.ext }] }) });
+  if (!r.ok) throw new Error('upload-urls ' + r.status);
+  const it = (await r.json()).items[0];
+  const put = await fetch(it.upload_url, { method: 'PUT', body: img.buf });
+  if (!put.ok) throw new Error('upload ' + put.status);
+  return it.file_path;
+}
+
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x'), p = url.pathname;
@@ -335,6 +362,33 @@ http.createServer(async (req, res) => {
       if (!r.ok) return send(res, 502, { error: 'token failed ' + r.status });
       return send(res, 200, await r.json());
     }
+    if (p === '/api/tryon-photo-status' && req.method === 'GET') return send(res, 200, { enabled: mhOn() });
+    if (p === '/api/tryon-photo' && req.method === 'POST') {
+      if (!mhOn()) return send(res, 503, { error: 'الميزة مقفولة حاليا' });
+      const b = await body(req, 12 * 1024 * 1024);
+      const person = mhDataUrl(b.person), garment = mhDataUrl(b.garment);
+      if (!person || !garment) return send(res, 400, { error: 'صورة غير صالحة' });
+      if (!mhAllow(ip)) return send(res, 429, { error: 'وصلت للحد اليومي للتجارب، جرب بكرة' });
+      try {
+        const [pp, gp] = await Promise.all([mhUpload(person), mhUpload(garment)]);
+        const r = await fetch(MH + '/v1/ai-clothes-changer', { method: 'POST', headers: mhHeaders(),
+          body: JSON.stringify({ name: 'bingo tryon', assets: { person_file_path: pp, garment_file_path: gp, garment_type: 'upper_body' } }) });
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 402) return send(res, 503, { error: 'رصيد الخدمة خلص' });
+        if (!r.ok) return send(res, 502, { error: j.message || ('خطأ ' + r.status) });
+        return send(res, 200, { id: j.id });
+      } catch (e) { return send(res, 502, { error: 'فشل الاتصال بالخدمة' }); }
+    }
+    { const mm = /^\/api\/tryon-photo\/([A-Za-z0-9_-]{6,64})$/.exec(p);
+      if (mm && req.method === 'GET') {
+        if (!mhOn()) return send(res, 400, { error: 'bad id' });
+        try {
+          const r = await fetch(MH + '/v1/image-projects/' + mm[1], { headers: mhHeaders() });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) return send(res, 502, { status: 'error', message: 'خطأ ' + r.status });
+          return send(res, 200, { status: j.status, url: j.downloads && j.downloads[0] && j.downloads[0].url, message: j.error && j.error.message });
+        } catch (e) { return send(res, 502, { status: 'error', message: 'فشل الاتصال' }); }
+      } }
     if (p === '/tryon' || p === '/bingo') { res.writeHead(301, { Location: p + '/' }); return res.end(); }
     const appM = /^\/(tryon|bingo)\/(.*)$/.exec(p);
     if (appM) {
